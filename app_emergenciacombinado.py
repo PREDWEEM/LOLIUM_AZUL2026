@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # ===============================================================
-# 🌾 PREDWEEM OPERATIVO vK4.9.8 — LOLIUM PERGAMINO 2026
+# 🌾 PREDWEEM OPERATIVO vK4.9.8 — LOLIUM AZUL 2026
 # Actualización:
 # - UNIFICACIÓN MECANÍSTICA 100% (Modo Predicción Pura).
 # - NUEVO: Escudo Termofisiológico Dinámico (Media Móvil 10d) para inhibición estival.
@@ -11,7 +11,7 @@
 # - NUEVO: Bloqueo de emergencia (0%) hasta que una LLUVIA PUNTUAL supere la Cap. de Campo.
 # - Bypass de Ruptura de Dormición por Choque Hídrico Temprano (Pulso 0.75).
 # - Módulo Mecanístico de Balance Hídrico Superficial (BHS) activo.
-# - Evapotranspiración (ET0) mediante Hargreaves-Samani (Latitud Pergamino: -33.89).
+# - Evapotranspiración (ET0) mediante Hargreaves-Samani (Latitud Azul: -36.78).
 # - SIN MÓDULO DE VALIDACIÓN (Versión exclusiva para predicción operativa).
 # ===============================================================
 
@@ -28,7 +28,7 @@ from pathlib import Path
 # 1. CONFIGURACIÓN DE PÁGINA Y ESTILO
 # ---------------------------------------------------------
 st.set_page_config(
-    page_title="PREDWEEM PERGAMINO vK4.9.8 (Operativo)",
+    page_title="PREDWEEM AZUL vK4.9.8 (Operativo)",
     layout="wide",
     page_icon="🌾"
 )
@@ -116,8 +116,8 @@ def calculate_tt_scalar(t, t_base, t_opt, t_crit):
     else:
         return 0.0
 
-def calcular_et0_hargreaves(jday, tmax, tmin, latitud=-33.89):
-    # Latitud ajustada para Pergamino (-33.89)
+def calcular_et0_hargreaves(jday, tmax, tmin, latitud=-36.78):
+    # Latitud ajustada para Azul (-36.78)
     lat_rad = np.radians(latitud)
     dr = 1 + 0.033 * np.cos(2 * np.pi / 365 * jday)
     dec = 0.409 * np.sin(2 * np.pi / 365 * jday - 1.39)
@@ -193,7 +193,7 @@ def load_data(file_uploader=None):
     if ruta_local.exists():
         return pd.read_csv(ruta_local)
         
-    github_url = "https://raw.githubusercontent.com/PREDWEEM/LOLIUM-PERGA2026/main/meteo_daily.csv"
+    github_url = "https://raw.githubusercontent.com/PREDWEEM/LOLIUM-AZUL2026/main/meteo_daily.csv"
     try:
         return pd.read_csv(github_url)
     except Exception:
@@ -205,7 +205,7 @@ def load_data(file_uploader=None):
 modelo_ann, cluster_model = load_models()
 
 st.sidebar.image(
-    "https://raw.githubusercontent.com/PREDWEEM/LOLIUM-PERGA2026/main/logo.png",
+    "https://raw.githubusercontent.com/PREDWEEM/LOLIUM-AZUL2026/main/logo.png",
     use_container_width=True
 )
 st.sidebar.markdown("## 📂 1. Datos del Lote")
@@ -308,13 +308,13 @@ if df_meteo_raw is not None and modelo_ann is not None:
     df["Prec_3d"] = df["Prec"].rolling(window=3, min_periods=1).sum()
     
     mask_ruptura = (df["Julian_days"] <= limite_juliano_temprano) & (df["Prec_3d"] >= umbral_choque_hidrico)
-    # Impulso forzado para asegurar ruptura (0.75 en Pergamino)
+    # Impulso forzado para asegurar ruptura (0.75 en Azul)
     df.loc[mask_ruptura, "EMERREL"] = np.maximum(df.loc[mask_ruptura, "EMERREL"], 0.75) 
 
     # ---------------------------------------------------------
-    # MÓDULO HÍDRICO SUPERFICIAL (BHS PERGAMINO)
+    # MÓDULO HÍDRICO SUPERFICIAL (BHS AZUL)
     # ---------------------------------------------------------
-    df["ET0"] = calcular_et0_hargreaves(df["Julian_days"].values, df["TMAX"].values, df["TMIN"].values, latitud=-33.89)
+    df["ET0"] = calcular_et0_hargreaves(df["Julian_days"].values, df["TMAX"].values, df["TMIN"].values, latitud=-36.78)
     df["W_superficial"] = balance_hidrico_superficial(df["Prec"].values, df["ET0"].values, w_max=w_max_val, ke_suelo_max=ke_val)
     
     humedad_relativa = df["W_superficial"] / w_max_val
@@ -379,7 +379,7 @@ if df_meteo_raw is not None and modelo_ann is not None:
     # -----------------------------------------------------
     # VISUALIZACIÓN FRONT-END
     # -----------------------------------------------------
-    st.title("🌾 PREDWEEM LOLIUM - PERGAMINO 2026")
+    st.title("🌾 PREDWEEM LOLIUM - AZUL 2026")
 
     # Escala ajustada para visibilidad con umbral alto
     colorscale_hard = [
@@ -401,7 +401,7 @@ if df_meteo_raw is not None and modelo_ann is not None:
     fig_risk.update_layout(
         height=120,
         margin=dict(t=30, b=0, l=10, r=10),
-        title="Mapa de Riesgo Diario (Pergamino)"
+        title="Mapa de Riesgo Diario (Azul)"
     )
     st.plotly_chart(fig_risk, use_container_width=True)
 
@@ -561,7 +561,7 @@ if df_meteo_raw is not None and modelo_ann is not None:
         st.plotly_chart(fig_hidrico, use_container_width=True)
 
     with tab3:
-        st.header("🔍 Clasificación DTW (Pergamino)")
+        st.header("🔍 Clasificación DTW (Azul)")
         fecha_corte = pd.Timestamp("2026-05-01")
         df_obs = df[df["Fecha"] < fecha_corte].copy()
 
@@ -633,7 +633,7 @@ if df_meteo_raw is not None and modelo_ann is not None:
     st.sidebar.download_button(
         "📥 Descargar Reporte Completo",
         output.getvalue(),
-        "PREDWEEM_Operativo_Pergamino_vK4_9_8_Unificado.xlsx"
+        "PREDWEEM_Operativo_Azul_vK4_9_8_Unificado.xlsx"
     )
 
 else:
