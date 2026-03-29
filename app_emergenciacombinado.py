@@ -6,13 +6,12 @@
 # - NUEVO: Escudo Termofisiológico Dinámico (Media Móvil 10d) para inhibición estival.
 # - NUEVO: Alerta visual de Estrés Térmico post-emergencia.
 # - NUEVO: Corte Hídrico Estricto (20% HR) acoplado a la sigmoide.
-# - ELIMINADO: Exigencia hídrica de 100mm. Se restaura a Cap. de Campo estándar (ej. 20mm).
 # - NUEVO: Secado exponencial del suelo (Ke Dinámico / Factor Kr) en BHS.
 # - NUEVO: Bloqueo de emergencia (0%) hasta que una LLUVIA PUNTUAL supere la Cap. de Campo.
 # - Bypass de Ruptura de Dormición por Choque Hídrico Temprano (Pulso 0.75).
 # - Módulo Mecanístico de Balance Hídrico Superficial (BHS) activo.
 # - Evapotranspiración (ET0) mediante Hargreaves-Samani (Latitud Azul: -36.78).
-# - SIN MÓDULO DE VALIDACIÓN (Versión exclusiva para predicción operativa).
+# - MEJORA: Sensibilidad térmica e hídrica agresiva según nivel de rastrojo.
 # ===============================================================
 
 import streamlit as st
@@ -271,16 +270,22 @@ tipo_manejo = st.sidebar.selectbox(
     index=1 
 )
 
+# Lógica de cobertura ampliada (Sensibilidad Real)
 if "Muy Densa" in tipo_manejo:
-    ke_val = 0.15
+    ke_val = 0.10      # Evaporación mínima (gran escudo)
+    mod_termico = 0.80 # Aisla extremos térmicos (20% de reducción)
 elif "Alta" in tipo_manejo:
-    ke_val = 0.20
+    ke_val = 0.25      
+    mod_termico = 0.90 # Aisla extremos térmicos (10% de reducción)
 elif "Media" in tipo_manejo:
-    ke_val = 0.30
+    ke_val = 0.50      
+    mod_termico = 0.95 # Aisla extremos térmicos (5% de reducción)
 else:
-    ke_val = 0.40
+    ke_val = 0.95      # Evaporación casi total (suelo desnudo)
+    mod_termico = 1.00 # Amplitud térmica intacta (aire = suelo)
 
 st.sidebar.caption(f"Coeficiente Ke interno aplicado: **{ke_val:.2f}**")
+st.sidebar.caption(f"Modulador Térmico Suelo: **{mod_termico:.2f}**")
 
 # ---------------------------------------------------------
 # 5. MOTOR DE CÁLCULO
@@ -298,8 +303,16 @@ if df_meteo_raw is not None and modelo_ann is not None:
     df = df.dropna(subset=["Fecha", "TMAX", "TMIN", "Prec"]).sort_values("Fecha").reset_index(drop=True)
     df["Julian_days"] = df["Fecha"].dt.dayofyear
 
-    # --- PREDICCIÓN NEURAL PURA ---
-    X = df[["Julian_days", "TMAX", "TMIN", "Prec"]].to_numpy(float)
+    # Simulación de la temperatura real del suelo bajo el rastrojo
+    df["Tmedia_aire"] = (df["TMAX"] + df["TMIN"]) / 2
+    amplitud_termica = (df["TMAX"] - df["TMIN"]) / 2
+    
+    # El rastrojo reduce los extremos térmicos (aísla)
+    df["TMAX_suelo"] = df["Tmedia_aire"] + (amplitud_termica * mod_termico)
+    df["TMIN_suelo"] = df["Tmedia_aire"] - (amplitud_termica * mod_termico)
+
+    # --- PREDICCIÓN NEURAL PURA (usando T del Suelo) ---
+    X = df[["Julian_days", "TMAX_suelo", "TMIN_suelo", "Prec"]].to_numpy(float)
     emerrel_raw, _ = modelo_ann.predict(X)
     df["EMERREL"] = np.maximum(emerrel_raw, 0.0)
 
@@ -314,6 +327,7 @@ if df_meteo_raw is not None and modelo_ann is not None:
     # ---------------------------------------------------------
     # MÓDULO HÍDRICO SUPERFICIAL (BHS AZUL)
     # ---------------------------------------------------------
+    # Nota: ET0 usa las temperaturas del aire porque es una demanda atmosférica.
     df["ET0"] = calcular_et0_hargreaves(df["Julian_days"].values, df["TMAX"].values, df["TMIN"].values, latitud=-36.78)
     df["W_superficial"] = balance_hidrico_superficial(df["Prec"].values, df["ET0"].values, w_max=w_max_val, ke_suelo_max=ke_val)
     
@@ -328,12 +342,11 @@ if df_meteo_raw is not None and modelo_ann is not None:
     df.loc[humedad_relativa < 0.20, "EMERREL"] = 0.0
 
     # 2. TRIGGER DE RECARGA INICIAL (Lluvia puntual)
-    # Se bloquea la emergencia a 0% hasta que un solo evento de lluvia alcance la Capacidad de Campo configurada.
     df['Lluvia_Recarga'] = (df['Prec'] >= w_max_val).cummax()
     df.loc[~df['Lluvia_Recarga'], "EMERREL"] = 0.0
 
     # --- ESCUDO TERMOFISIOLÓGICO Y CÁLCULO TÉRMICO ---
-    df["Tmedia"] = (df["TMAX"] + df["TMIN"]) / 2
+    df["Tmedia"] = df["Tmedia_aire"]
 
     # Escudo Termoinhibición
     df["Tmedia_10d"] = df["Tmedia"].rolling(window=10, min_periods=1).mean()
@@ -626,8 +639,8 @@ if df_meteo_raw is not None and modelo_ann is not None:
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         df.to_excel(writer, index=False, sheet_name='Data_Diaria')
         pd.DataFrame({
-            'Configuracion': ['T_Base', 'T_Optima', 'T_Critica', 'W_Max', 'Ke', 'Umbral_Termoinhibicion'],
-            'Valor': [t_base_val, t_opt_max, t_critica, w_max_val, ke_val, umbral_termoinhibicion]
+            'Configuracion': ['T_Base', 'T_Optima', 'T_Critica', 'W_Max', 'Ke', 'Mod_Termico', 'Umbral_Termoinhibicion'],
+            'Valor': [t_base_val, t_opt_max, t_critica, w_max_val, ke_val, mod_termico, umbral_termoinhibicion]
         }).to_excel(writer, sheet_name='Bio_Params', index=False)
 
     st.sidebar.download_button(
