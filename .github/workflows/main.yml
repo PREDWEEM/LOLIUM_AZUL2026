@@ -1,1 +1,46 @@
+name: Actualizacion Diaria Clima Azul
 
+on:
+  schedule:
+    - cron: '0 11 * * *' # Se ejecuta a las 11:00 UTC (08:00 AM en Argentina)
+  workflow_dispatch: # Permite ejecutar el script manualmente desde GitHub
+
+# Permisos necesarios para que el bot pueda guardar el archivo en tu repositorio
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+
+      - name: Instalar dependencias
+        run: |
+          pip install requests pandas
+
+      - name: Ejecutar script de clima
+        run: python actualizar_clima.py
+
+      - name: Subir cambios al repo
+        run: |
+          # Configuramos el bot oficial de GitHub Actions
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          
+          # Agregamos el archivo histórico modificado
+          git add meteo_daily.csv
+          
+          # Verificamos si hubo cambios reales para evitar errores (Exit code 128)
+          if git diff --staged --quiet; then
+            echo "No hay datos nuevos para actualizar hoy. Saltando commit."
+          else
+            git commit -m "Actualización diaria: pronóstico de Azul agregado a meteo_daily.csv"
+            git push
+          fi
