@@ -2,10 +2,13 @@ name: Actualizacion Diaria Clima Azul
 
 on:
   schedule:
-    - cron: '0 11 * * *' # Se ejecuta a las 11:00 UTC (08:00 AM en Argentina)
-  workflow_dispatch: # Permite ejecutar el script manualmente desde GitHub
+    # Se ejecuta 3 veces al día (Horarios en UTC):
+    # 11:00 UTC = 08:00 AM Argentina
+    # 17:00 UTC = 02:00 PM Argentina
+    # 23:00 UTC = 08:00 PM Argentina
+    - cron: '0 11,17,23 * * *'
+  workflow_dispatch: # Permite ejecución manual desde la pestaña Actions
 
-# Permisos necesarios para que el bot pueda guardar el archivo en tu repositorio
 permissions:
   contents: write
 
@@ -30,17 +33,17 @@ jobs:
 
       - name: Subir cambios al repo
         run: |
-          # Configuramos el bot oficial de GitHub Actions
+          # Configuración del bot de GitHub
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
           
-          # Agregamos el archivo histórico modificado
+          # Agregamos el archivo que genera el script (asegúrate que el .py use este nombre)
           git add meteo_daily.csv
           
-          # Verificamos si hubo cambios reales para evitar errores (Exit code 128)
+          # Solo hace commit si hay cambios reales en los datos
           if git diff --staged --quiet; then
-            echo "No hay datos nuevos para actualizar hoy. Saltando commit."
+            echo "No hay cambios nuevos en el pronóstico de Azul. Saltando commit."
           else
-            git commit -m "Actualización diaria: pronóstico de Azul agregado a meteo_daily.csv"
+            git commit -m "Actualización programada: Clima Azul (ECMWF)"
             git push
           fi
