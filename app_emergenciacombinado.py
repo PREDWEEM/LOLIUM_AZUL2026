@@ -1,8 +1,20 @@
 # -*- coding: utf-8 -*-
 # ===============================================================
-# 🌾 PREDWEEM LOLIUM AZUL 2026 — vK5.0.1 (Visual + Decisión)
-# Mejora total de UI + foco 100% en toma de decisiones de malezas
+# 🌾 PREDWEEM OPERATIVO vK4.9.8 — LOLIUM AZUL 2026
+# Actualización:
+# - UI: "Datos del Lote" movido a st.expander en la página principal.
+# - UNIFICACIÓN MECANÍSTICA 100% (Modo Predicción Pura).
+# - NUEVO: Escudo Termofisiológico Dinámico (Media Móvil 10d) para inhibición estival.
+# - NUEVO: Alerta visual de Estrés Térmico post-emergencia.
+# - NUEVO: Corte Hídrico Estricto (20% HR) acoplado a la sigmoide.
+# - NUEVO: Secado exponencial del suelo (Ke Dinámico / Factor Kr) en BHS.
+# - NUEVO: Bloqueo de emergencia (0%) hasta que una LLUVIA PUNTUAL supere la Cap. de Campo.
+# - Bypass de Ruptura de Dormición por Choque Hídrico Temprano (Pulso 0.75).
+# - Módulo Mecanístico de Balance Hídrico Superficial (BHS) activo.
+# - Evapotranspiración (ET0) mediante Hargreaves-Samani (Latitud Azul: -36.78).
+# - MEJORA: Sensibilidad térmica e hídrica agresiva según nivel de rastrojo.
 # ===============================================================
+
 import streamlit as st
 import numpy as np
 import pandas as pd
@@ -12,48 +24,60 @@ import io
 from datetime import timedelta
 from pathlib import Path
 
+# ---------------------------------------------------------
+# 1. CONFIGURACIÓN DE PÁGINA Y ESTILO
+# ---------------------------------------------------------
 st.set_page_config(
-    page_title="PREDWEEM LOLIUM AZUL 2026 • Decisión Malezas",
+    page_title="PREDWEEM AZUL vK4.9.8 (Operativo)",
     layout="wide",
-    page_icon="🌾",
-    initial_sidebar_state="expanded"
+    page_icon="🌾"
 )
 
-# ====================== CSS PROFESIONAL ======================
 st.markdown("""
 <style>
-    .main { background: linear-gradient(180deg, #f8fafc 0%, #ecfdf5 100%); }
-    [data-testid="stSidebar"] { background-color: #dcfce7; border-right: 3px solid #86efac; }
-    .header-main { 
-        background: linear-gradient(90deg, #166534, #052e16); 
-        color: white; padding: 2rem 2rem; border-radius: 20px; 
-        box-shadow: 0 20px 25px -5px rgb(22 101 52 / 0.2);
-        position: relative;
+    .main { background-color: #f8fafc; }
+    [data-testid="stSidebar"] {
+        background-color: #dcfce7;
+        border-right: 1px solid #bbf7d0;
     }
-    .decision-card { 
-        background: white; border-radius: 16px; padding: 1.5rem; 
-        box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1); 
-        border: 1px solid #e2e8f0; transition: all 0.3s;
+    [data-testid="stSidebar"] .stMarkdown, [data-testid="stSidebar"] p {
+        color: #166534 !important;
     }
-    .decision-card:hover { transform: translateY(-4px); box-shadow: 0 20px 25px -5px rgb(22 101 52 / 0.15); }
-    .status-pill { padding: 6px 16px; border-radius: 9999px; font-size: 0.9rem; font-weight: 600; }
-    .recommendation-box { 
-        background: linear-gradient(90deg, #ecfdf5, #f0fdf4); 
-        border-left: 8px solid #166534; padding: 1.5rem; border-radius: 12px;
+    .stMetric {
+        background-color: #ffffff;
+        padding: 15px;
+        border-radius: 10px;
+        border: 1px solid #e2e8f0;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
     }
-    .plot-container { border-radius: 16px; overflow: hidden; box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1); }
+    .bio-alert {
+        padding: 10px;
+        border-radius: 5px;
+        background-color: #fee2e2;
+        color: #991b1b;
+        border: 1px solid #fca5a5;
+        margin-bottom: 10px;
+        font-size: 0.9em;
+    }
+    .metric-header { color: #1e293b; font-weight: bold; margin-bottom: -10px; }
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
 </style>
 """, unsafe_allow_html=True)
 
 BASE = Path(__file__).parent if "__file__" in globals() else Path.cwd()
 
-# ====================== MOCKS Y MODELOS ======================
+# ---------------------------------------------------------
+# 2. ROBUSTEZ Y ARCHIVOS (MOCKS)
+# ---------------------------------------------------------
 def create_mock_files_if_missing():
     if not (BASE / "IW.npy").exists():
         np.save(BASE / "IW.npy", np.random.rand(4, 10))
         np.save(BASE / "bias_IW.npy", np.random.rand(10))
         np.save(BASE / "LW.npy", np.random.rand(1, 10))
         np.save(BASE / "bias_out.npy", np.random.rand(1))
+
     if not (BASE / "modelo_clusters_k3.pkl").exists():
         jd = np.arange(1, 366)
         p1 = np.exp(-((jd - 100) ** 2) / 600)
@@ -69,6 +93,9 @@ def create_mock_files_if_missing():
 
 create_mock_files_if_missing()
 
+# ---------------------------------------------------------
+# 3. LÓGICA TÉCNICA (ANN + BIO + BHS)
+# ---------------------------------------------------------
 def dtw_distance(a, b):
     na, nb = len(a), len(b)
     dp = np.full((na + 1, nb + 1), np.inf)
@@ -80,35 +107,44 @@ def dtw_distance(a, b):
     return dp[na, nb]
 
 def calculate_tt_scalar(t, t_base, t_opt, t_crit):
-    if t <= t_base: return 0.0
-    elif t <= t_opt: return t - t_base
-    elif t < t_crit: return (t - t_base) * ((t_crit - t) / (t_crit - t_opt))
-    else: return 0.0
+    if t <= t_base:
+        return 0.0
+    elif t <= t_opt:
+        return t - t_base
+    elif t < t_crit:
+        return (t - t_base) * ((t_crit - t) / (t_crit - t_opt))
+    else:
+        return 0.0
 
 def calcular_et0_hargreaves(jday, tmax, tmin, latitud=-36.78):
+    # Latitud ajustada para Azul (-36.78)
     lat_rad = np.radians(latitud)
     dr = 1 + 0.033 * np.cos(2 * np.pi / 365 * jday)
     dec = 0.409 * np.sin(2 * np.pi / 365 * jday - 1.39)
     ws = np.arccos(-np.tan(lat_rad) * np.tan(dec))
+    
     ra = (24 * 60 / np.pi) * 0.0820 * dr * (
         ws * np.sin(lat_rad) * np.sin(dec) + np.cos(lat_rad) * np.cos(dec) * np.sin(ws)
     )
     ra_mm = ra / 2.45
     tmean = (tmax + tmin) / 2.0
     trange = np.maximum(tmax - tmin, 0)
+    
     et0 = 0.0023 * ra_mm * (tmean + 17.8) * np.sqrt(trange)
     return np.maximum(et0, 0)
 
 def balance_hidrico_superficial(prec, et0, w_max=20.0, ke_suelo_max=0.4):
     n = len(prec)
     w = np.zeros(n)
-    w[0] = w_max / 2.0
+    w[0] = w_max / 2.0 
+    
     for i in range(1, n):
-        kr = w[i-1] / w_max
+        kr = w[i-1] / w_max 
         ke_dinamico = ke_suelo_max * kr
         evaporacion_real = et0[i] * ke_dinamico
         w[i] = w[i-1] + prec[i] - evaporacion_real
         w[i] = max(0.0, min(w_max, w[i]))
+        
     return w
 
 class PracticalANNModel:
@@ -116,8 +152,10 @@ class PracticalANNModel:
         self.IW, self.bIW, self.LW, self.bLW = IW, bIW, LW, bLW
         self.input_min = np.array([1, 0, -7, 0])
         self.input_max = np.array([300, 41, 25.5, 84])
+
     def normalize(self, X):
         return 2 * (X - self.input_min) / (self.input_max - self.input_min) - 1
+
     def predict(self, Xreal):
         Xn = self.normalize(Xreal)
         emer = []
@@ -150,103 +188,180 @@ def load_models():
 def load_data(file_uploader=None):
     if file_uploader:
         return pd.read_excel(file_uploader) if file_uploader.name.endswith((".xlsx", ".xls")) else pd.read_csv(file_uploader)
+    
     ruta_local = BASE / "meteo_daily.csv"
     if ruta_local.exists():
         return pd.read_csv(ruta_local)
+        
     github_url = "https://raw.githubusercontent.com/PREDWEEM/LOLIUM-AZUL2026/main/meteo_daily.csv"
     try:
         return pd.read_csv(github_url)
     except Exception:
         return None
 
-# ====================== CARGA DE MODELOS ======================
+# ---------------------------------------------------------
+# 4. INTERFAZ Y SIDEBAR
+# ---------------------------------------------------------
 modelo_ann, cluster_model = load_models()
 
-# ====================== HEADER + INTERFAZ ======================
-st.markdown("""
-<div class="header-main">
-    <h1 style="margin:0; font-size:2.4rem;">🌾 PREDWEEM LOLIUM AZUL 2026</h1>
-    <p style="margin:0; font-size:1.1rem; opacity:0.95;">Tu asistente de <strong>toma de decisiones</strong> en manejo de malezas</p>
-    <p style="margin:8px 0 0 0; font-size:0.95rem; opacity:0.8;">vK5.0.1 • Enfoque total en Ventana de Control</p>
-</div>
-""", unsafe_allow_html=True)
+# --- HEADER PRINCIPAL ---
+st.title("🌾 PREDWEEM LOLIUM - AZUL 2026")
 
+# --- MENÚ DESPLEGABLE: DATOS DEL LOTE (MAIN PAGE) ---
 with st.expander("📂 1. Datos del Lote", expanded=True):
-    col1, col2 = st.columns([3, 2])
-    with col1:
-        archivo_meteo = st.file_uploader("📤 Subir clima manual (xlsx/csv)", type=["xlsx","csv"])
+    col_upload, col_rastrojo = st.columns(2)
+    
+    with col_upload:
+        archivo_meteo = st.file_uploader("Subir Clima Manual (Opcional)", type=["xlsx", "csv"], help="Si no subes nada, el sistema leerá automáticamente meteo_daily.csv")
         df_meteo_raw = load_data(archivo_meteo)
-    with col2:
-        tipo_manejo = st.selectbox("🌱 Nivel de rastrojo", [
-            "Cobertura Muy Densa (SD - Extra Rastrojo/CS)",
-            "Alta Cobertura (SD - Rastrojo Trigo/Maíz)",
-            "Cobertura Media (SD - Rastrojo Soja)",
-            "Baja Cobertura / Labranza Convencional"
-        ], index=1)
-        if "Muy Densa" in tipo_manejo: ke_val, mod_termico = 0.10, 0.80
-        elif "Alta" in tipo_manejo: ke_val, mod_termico = 0.25, 0.90
-        elif "Media" in tipo_manejo: ke_val, mod_termico = 0.50, 0.95
-        else: ke_val, mod_termico = 0.95, 1.00
-        st.caption(f"**Ke aplicado:** {ke_val:.2f} | **Modulador térmico:** {mod_termico:.2f}")
+        if df_meteo_raw is not None:
+            st.success("✅ Datos climáticos cargados.")
+        else:
+            st.error("❌ No se encontró 'meteo_daily.csv' ni se subió ningún archivo.")
+            
+    with col_rastrojo:
+        tipo_manejo = st.selectbox(
+            "Nivel de Rastrojo",
+            options=[
+                "Cobertura Muy Densa (SD - Extra Rastrojo/CS)",
+                "Alta Cobertura (SD - Rastrojo Trigo/Maíz)",
+                "Cobertura Media (SD - Rastrojo Soja)",
+                "Baja Cobertura / Labranza Convencional"
+            ],
+            index=1 
+        )
+        
+        # Lógica de cobertura ampliada (Sensibilidad Real)
+        if "Muy Densa" in tipo_manejo:
+            ke_val = 0.10      # Evaporación mínima (gran escudo)
+            mod_termico = 0.80 # Aisla extremos térmicos (20% de reducción)
+        elif "Alta" in tipo_manejo:
+            ke_val = 0.25      
+            mod_termico = 0.90 # Aisla extremos térmicos (10% de reducción)
+        elif "Media" in tipo_manejo:
+            ke_val = 0.50      
+            mod_termico = 0.95 # Aisla extremos térmicos (5% de reducción)
+        else:
+            ke_val = 0.95      # Evaporación casi total (suelo desnudo)
+            mod_termico = 1.00 # Amplitud térmica intacta (aire = suelo)
+            
+        st.caption(f"Coeficiente Ke interno aplicado: **{ke_val:.2f}** | Modulador Térmico Suelo: **{mod_termico:.2f}**")
 
-# ====================== SIDEBAR ======================
-with st.sidebar:
-    st.image("https://raw.githubusercontent.com/PREDWEEM/LOLIUM-AZUL2026/main/logo.png", use_container_width=True)
-    st.markdown("### ⚙️ Parámetros de Decisión")
-    umbral_er = st.slider("Umbral de Alerta Temprana", 0.05, 0.80, 0.30)
-    st.divider()
-    st.markdown("**🛡️ Escudo Termofisiológico**")
-    umbral_termoinhibicion = st.number_input("Temperatura media móvil 10d (°C)", 15.0, 35.0, 24.0, 0.5)
-    st.markdown("**💧 Ruptura de Dormición**")
-    umbral_choque_hidrico = st.slider("Choque hídrico 3 días (mm)", 20, 100, 45)
-    residualidad = st.number_input("Residualidad herbicida (días)", 0, 60, 20)
-    st.divider()
-    col_a, col_b = st.columns(2)
-    with col_a: t_base_val = st.number_input("T° Base (°C)", value=2.0, step=0.5)
-    with col_b: t_opt_max = st.number_input("T° Óptima (°C)", value=20, step=1)
-    t_critica = st.slider("T° Crítica (°C)", 26.0, 42.0, 30.0)
-    st.divider()
-    dga_optimo = st.number_input("°Cd para Control Óptimo", value=600, step=10)
-    dga_critico = st.number_input("Límite de Ventana (°Cd)", value=800, step=10)
-    w_max_val = st.number_input("Cap. Campo Superficial (mm)", value=30, step=1)
 
-# ====================== MOTOR + VISUALIZACIÓN ======================
+# --- SIDEBAR ---
+st.sidebar.image(
+    "https://raw.githubusercontent.com/PREDWEEM/LOLIUM-AZUL2026/main/logo.png",
+    use_container_width=True
+)
+
+st.sidebar.markdown("## ⚙️ 2. Fisiología y Logística")
+
+umbral_er = st.sidebar.slider("Umbral Alerta Temprana", 0.05, 0.80, 0.30)
+
+st.sidebar.markdown("**Ruptura de Dormición Estival (Escudo)**")
+umbral_termoinhibicion = st.sidebar.number_input(
+    "Umbral Termoinhibición (°C)", 
+    min_value=15.0, max_value=35.0, value=24.0, step=0.5,
+    help="Si la T° Media móvil de los últimos 10 días supera este valor, la emergencia se bloquea a 0%."
+)
+
+st.sidebar.markdown("**Ruptura de Dormición (Otoño Temprano)**")
+umbral_choque_hidrico = st.sidebar.slider(
+    "Choque Hídrico 3 días (mm)", 
+    min_value=20.0, max_value=100.0, value=45.0, 
+    help="Desbloquea la emergencia temprana si se acumula esta lluvia antes de fines de abril."
+)
+
+residualidad = st.sidebar.number_input("Residualidad Herbicida (días)", 0, 60, 20)
+
+col_t1, col_t2 = st.sidebar.columns(2)
+with col_t1:
+    t_base_val = st.number_input("T Base", value=2.0, step=0.5)
+with col_t2:
+    t_opt_max = st.number_input("T Óptima Max", value=20.0, step=1.0)
+
+t_critica = st.sidebar.slider("T Crítica (Stop)", 26.0, 42.0, 30.0)
+
+st.sidebar.markdown("**Objetivos (°Cd)**")
+dga_optimo = st.sidebar.number_input(
+    "TT Control Post-emergente (°Cd)",
+    value=600,
+    step=10,
+    help="Grados-día a acumular desde el primer pico."
+)
+dga_critico = st.sidebar.number_input("Límite Ventana (°Cd)", value=800, step=10)
+
+st.sidebar.divider()
+st.sidebar.markdown("## 💧 3. Balance Hídrico (Suelo)")
+w_max_val = st.sidebar.number_input("Cap. de Campo Superficial (mm)", value=30.0, step=1.0)
+
+
+# ---------------------------------------------------------
+# 5. MOTOR DE CÁLCULO
+# ---------------------------------------------------------
 if df_meteo_raw is not None and modelo_ann is not None:
-    # === PROCESAMIENTO TÉCNICO (igual que antes) ===
+
+    # --- PREPROCESAMIENTO CLIMA ---
     df = df_meteo_raw.copy()
     df.columns = [c.upper().strip() for c in df.columns]
+    
     mapeo = {'FECHA': 'Fecha', 'DATE': 'Fecha', 'TMAX': 'TMAX', 'TMIN': 'TMIN', 'PREC': 'Prec', 'LLUVIA': 'Prec'}
     df = df.rename(columns=mapeo)
+
     df['Fecha'] = pd.to_datetime(df['Fecha'])
     df = df.dropna(subset=["Fecha", "TMAX", "TMIN", "Prec"]).sort_values("Fecha").reset_index(drop=True)
     df["Julian_days"] = df["Fecha"].dt.dayofyear
+
+    # Simulación de la temperatura real del suelo bajo el rastrojo
     df["Tmedia_aire"] = (df["TMAX"] + df["TMIN"]) / 2
     amplitud_termica = (df["TMAX"] - df["TMIN"]) / 2
+    
+    # El rastrojo reduce los extremos térmicos (aísla)
     df["TMAX_suelo"] = df["Tmedia_aire"] + (amplitud_termica * mod_termico)
     df["TMIN_suelo"] = df["Tmedia_aire"] - (amplitud_termica * mod_termico)
 
+    # --- PREDICCIÓN NEURAL PURA (usando T del Suelo) ---
     X = df[["Julian_days", "TMAX_suelo", "TMIN_suelo", "Prec"]].to_numpy(float)
     emerrel_raw, _ = modelo_ann.predict(X)
     df["EMERREL"] = np.maximum(emerrel_raw, 0.0)
 
-    limite_juliano_temprano = 110
+    # --- BYPASS AGRONÓMICO: RUPTURA DE DORMICIÓN TEMPRANA ---
+    limite_juliano_temprano = 110 # Aprox. 20 de Abril
     df["Prec_3d"] = df["Prec"].rolling(window=3, min_periods=1).sum()
+    
     mask_ruptura = (df["Julian_days"] <= limite_juliano_temprano) & (df["Prec_3d"] >= umbral_choque_hidrico)
-    df.loc[mask_ruptura, "EMERREL"] = np.maximum(df.loc[mask_ruptura, "EMERREL"], 0.75)
+    # Impulso forzado para asegurar ruptura (0.75 en Azul)
+    df.loc[mask_ruptura, "EMERREL"] = np.maximum(df.loc[mask_ruptura, "EMERREL"], 0.75) 
 
-    df["ET0"] = calcular_et0_hargreaves(df["Julian_days"].values, df["TMAX"].values, df["TMIN"].values)
+    # ---------------------------------------------------------
+    # MÓDULO HÍDRICO SUPERFICIAL (BHS AZUL)
+    # ---------------------------------------------------------
+    # Nota: ET0 usa las temperaturas del aire porque es una demanda atmosférica.
+    df["ET0"] = calcular_et0_hargreaves(df["Julian_days"].values, df["TMAX"].values, df["TMIN"].values, latitud=-36.78)
     df["W_superficial"] = balance_hidrico_superficial(df["Prec"].values, df["ET0"].values, w_max=w_max_val, ke_suelo_max=ke_val)
+    
     humedad_relativa = df["W_superficial"] / w_max_val
+    
     df["Hydric_Factor"] = 1 / (1 + np.exp(-10 * (humedad_relativa - 0.3)))
+    
+    # Multiplicador final mecanístico
     df["EMERREL"] = df["EMERREL"] * df["Hydric_Factor"]
+    
+    # 1. CORTE HÍDRICO ESTRICTO DIARIO
     df.loc[humedad_relativa < 0.20, "EMERREL"] = 0.0
+
+    # 2. TRIGGER DE RECARGA INICIAL (Lluvia puntual)
     df['Lluvia_Recarga'] = (df['Prec'] >= w_max_val).cummax()
     df.loc[~df['Lluvia_Recarga'], "EMERREL"] = 0.0
 
+    # --- ESCUDO TERMOFISIOLÓGICO Y CÁLCULO TÉRMICO ---
     df["Tmedia"] = df["Tmedia_aire"]
+
+    # Escudo Termoinhibición
     df["Tmedia_10d"] = df["Tmedia"].rolling(window=10, min_periods=1).mean()
     mask_inhibicion = df["Tmedia_10d"] >= umbral_termoinhibicion
     df.loc[mask_inhibicion, "EMERREL"] = 0.0
+
     df["DG"] = df["Tmedia"].apply(lambda x: calculate_tt_scalar(x, t_base_val, t_opt_max, t_critica))
 
     fecha_hoy = pd.Timestamp.now().normalize()
@@ -254,87 +369,292 @@ if df_meteo_raw is not None and modelo_ann is not None:
         fecha_hoy = df['Fecha'].max()
 
     indices_pulso = df.index[df["EMERREL"] >= umbral_er].tolist()
-    dga_hoy = dga_7dias = 0.0
-    fecha_inicio_ventana = fecha_control = None
+
+    dga_hoy, dga_7dias = 0.0, 0.0
+    fecha_inicio_ventana, fecha_control = None, None
+    msg_estado = "Esperando pico de emergencia..."
     dias_stress = 0
+
     if indices_pulso:
         fecha_inicio_ventana = df.loc[indices_pulso[0], "Fecha"]
         df_desde_pico = df[df["Fecha"] >= fecha_inicio_ventana].copy()
         df_desde_pico["DGA_cum"] = df_desde_pico["DG"].cumsum()
+
         df_control = df_desde_pico[df_desde_pico["DGA_cum"] >= dga_optimo]
         if not df_control.empty:
             fecha_control = df_control.iloc[0]["Fecha"]
-        dga_hoy = df.loc[(df["Fecha"] >= fecha_inicio_ventana) & (df["Fecha"] <= fecha_hoy), "DG"].sum()
+
+        dga_hoy = df.loc[
+            (df["Fecha"] >= fecha_inicio_ventana) & (df["Fecha"] <= fecha_hoy),
+            "DG"
+        ].sum()
+
         idx_hoy = df[df["Fecha"] == fecha_hoy].index[0]
         if idx_hoy + 8 <= len(df):
             dga_7dias = dga_hoy + df.iloc[idx_hoy + 1: idx_hoy + 8]["DG"].sum()
         else:
             dga_7dias = dga_hoy
+
+        msg_estado = f"Pico detectado el {fecha_inicio_ventana.strftime('%d/%m')}"
         dias_stress = len(df_desde_pico[df_desde_pico["Tmedia"] > t_opt_max])
 
-    # ====================== PANEL DE DECISIÓN (LO MÁS VISIBLE) ======================
-    st.markdown("## 🎯 PANEL DE TOMA DE DECISIONES INMEDIATA")
-    kpi1, kpi2, kpi3, kpi4 = st.columns(4)
-    riesgo_actual = df["EMERREL"].max()
-    estado = "🟢 BAJO" if riesgo_actual < 0.15 else "🟡 MODERADO" if riesgo_actual < 0.35 else "🔴 ALTO"
-    dias_hasta_control = max(0, int((dga_optimo - dga_hoy) / df["DG"].mean())) if dga_hoy > 0 and df["DG"].mean() > 0 else "—"
+    # -----------------------------------------------------
+    # VISUALIZACIÓN FRONT-END
+    # -----------------------------------------------------
+    # Escala ajustada para visibilidad con umbral alto
+    colorscale_hard = [
+        [0.0, "green"],
+        [0.29, "green"],
+        [0.30, "red"],
+        [1.0, "red"]
+    ]
 
-    with kpi1:
-        st.markdown(f'<div class="decision-card"><h3 style="margin:0;font-size:1.1rem;">Riesgo Actual</h3><h1 style="margin:8px 0 0 0;color:{"#166534" if riesgo_actual<0.2 else "#f59e0b" if riesgo_actual<0.35 else "#ef4444"}">{riesgo_actual:.1%}</h1><div class="status-pill" style="background:{"#ecfdf5" if riesgo_actual<0.2 else "#fefce8" if riesgo_actual<0.35 else "#fee2e2"};color:{"#166534" if riesgo_actual<0.2 else "#854d0e" if riesgo_actual<0.35 else "#b91c1c"}">{estado}</div></div>', unsafe_allow_html=True)
-    with kpi2:
-        st.metric("**Próximo Control**", f"{dias_hasta_control} días" if isinstance(dias_hasta_control, int) else dias_hasta_control, delta=f"{dga_optimo - dga_hoy:.0f} °Cd faltantes" if dga_hoy > 0 else None)
-    with kpi3:
-        st.metric("**°Cd Acumulados**", f"{dga_hoy:.0f}", f"+{dga_7dias - dga_hoy:.0f} en +7 días")
-    with kpi4:
-        st.metric("**Estrés Térmico**", f"{dias_stress} días", delta="Post-emergencia" if dias_stress > 0 else None)
-
-    # ====================== RECOMENDACIÓN CLARA ======================
-    st.markdown("### 💡 RECOMENDACIÓN DE MANEJO DE MALEZAS")
-    if not indices_pulso:
-        rec = "⏳ **Esperando recarga de suelo.** Necesitas una lluvia puntual ≥ 30 mm para destrabar la emergencia."
-        color_rec = "warning"
-    elif dga_hoy >= dga_critico:
-        rec = "🚨 **VENTANA DE CONTROL CERRADA.** Aplicar herbicida de forma URGENTE."
-    elif dga_hoy >= dga_optimo:
-        rec = f"✅ **MOMENTO ÓPTIMO.** Aplicar post-emergente **hoy o mañana**. Protección garantizada {residualidad} días."
-    else:
-        rec = f"📅 **En progreso.** Faltan **{dga_optimo - dga_hoy:.0f} °Cd** para el control óptimo."
-    st.markdown(f'<div class="recommendation-box"><p style="font-size:1.15rem;margin:0;">{rec}</p></div>', unsafe_allow_html=True)
-
-    # ====================== GRÁFICAS ======================
-    st.markdown("### 🔥 Mapa de Riesgo Diario de Emergencia")
-    fig_risk = go.Figure(data=go.Heatmap(z=[df["EMERREL"].values], x=df["Fecha"], y=["Emergencia"], colorscale=[[0,"#166534"],[0.29,"#166534"],[0.3,"#f59e0b"],[1,"#ef4444"]], zmin=0, zmax=1, showscale=False))
-    fig_risk.update_layout(height=140, margin=dict(t=10,b=10,l=10,r=10))
+    fig_risk = go.Figure(data=go.Heatmap(
+        z=[df["EMERREL"].values],
+        x=df["Fecha"],
+        y=["Emergencia"],
+        colorscale=colorscale_hard,
+        zmin=0,
+        zmax=1,
+        showscale=False
+    ))
+    fig_risk.update_layout(
+        height=120,
+        margin=dict(t=30, b=0, l=10, r=10),
+        title="Mapa de Riesgo Diario (Azul)"
+    )
     st.plotly_chart(fig_risk, use_container_width=True)
 
-    tab1, tab2, tab3, tab4 = st.tabs(["📍 MONITOREO DE DECISIÓN", "💧 BALANCE HÍDRICO", "📈 ANÁLISIS ESTRATÉGICO", "🧬 BIO-CALIBRACIÓN"])
-    
+    tab1, tab2, tab3, tab4 = st.tabs([
+        "📊 MONITOR DE DECISIÓN",
+        "💧 PRECIPITACIONES Y SUELO",
+        "📈 ANÁLISIS ESTRATÉGICO",
+        "🧪 BIO-CALIBRACIÓN"
+    ])
+
     with tab1:
-        col_main, col_gauge = st.columns([3, 1])
+        col_main, col_gauge = st.columns([2, 1])
+
         with col_main:
             fig_emer = go.Figure()
-            fig_emer.add_trace(go.Scatter(x=df["Fecha"], y=df["EMERREL"], mode='lines', name='Tasa Diaria', line=dict(color='#166534', width=3), fill='tozeroy'))
-            fig_emer.add_hline(y=umbral_er, line_dash="dash", line_color="#f59e0b", annotation_text=f"ALERTA ({umbral_er})")
+            fig_emer.add_trace(go.Scatter(
+                x=df["Fecha"],
+                y=df["EMERREL"],
+                mode='lines',
+                name='Tasa Diaria Simulada',
+                line=dict(color='#166534', width=2.5),
+                fill='tozeroy',
+                fillcolor='rgba(22, 101, 52, 0.1)'
+            ))
+            fig_emer.add_hline(
+                y=umbral_er,
+                line_dash="dash",
+                line_color="orange",
+                annotation_text=f"Umbral Alerta ({umbral_er})"
+            )
+
             if fecha_control:
-                fig_emer.add_vline(x=fecha_control, line_dash="dot", line_color="#ef4444", line_width=4, annotation_text=f"CONTROL ÓPTIMO ({dga_optimo}°Cd)")
-                fig_emer.add_vrect(x0=fecha_control, x1=fecha_control + timedelta(days=residualidad), fillcolor="#3b82f6", opacity=0.15)
-            fig_emer.update_layout(title="Dinámica de Emergencia y Ventana Crítica", height=480)
+                fig_emer.add_vline(
+                    x=fecha_control.timestamp() * 1000,
+                    line_dash="dot",
+                    line_color="red",
+                    line_width=3,
+                    annotation_text=f"Control ({dga_optimo}°Cd)",
+                    annotation_position="top left",
+                    annotation_font=dict(color="red", size=12)
+                )
+                fin_res = fecha_control + timedelta(days=residualidad)
+                fig_emer.add_vrect(
+                    x0=fecha_control.timestamp() * 1000,
+                    x1=fin_res.timestamp() * 1000,
+                    fillcolor="blue",
+                    opacity=0.1,
+                    layer="below",
+                    line_width=0,
+                    annotation_text=f"Protección ({residualidad}d)",
+                    annotation_position="top left"
+                )
+
+            fig_emer.update_layout(
+                title="Dinámica de Emergencia y Momento Crítico",
+                height=450,
+                hovermode="x unified",
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+            )
             st.plotly_chart(fig_emer, use_container_width=True)
+
+            if fecha_inicio_ventana:
+                st.success(
+                    f"📅 **Inicio de Conteo Térmico:** {fecha_inicio_ventana.strftime('%d-%m-%Y')} "
+                    f"(Primer pico detectado)"
+                )
+                if dias_stress > 0:
+                    st.markdown(f"""<div class="bio-alert">🔥 <b>Estrés Térmico:</b> {dias_stress} días con T > {t_opt_max}°C desde el inicio.</div>""", unsafe_allow_html=True)
+                
+                if fecha_control:
+                    st.error(
+                        f"🎯 **MOMENTO CRÍTICO DE CONTROL:** {fecha_control.strftime('%d-%m-%Y')}. "
+                        f"Se acumularon **{dga_optimo} °Cd** post-emergencia."
+                    )
+                else:
+                    st.info(
+                        f"⏳ **En Progreso:** Aún no se han acumulado los {dga_optimo} °Cd "
+                        f"requeridos para el control."
+                    )
+            else:
+                st.warning(f"⏳ Esperando primera alerta (Tasa diaria >= {umbral_er}). El perfil necesita recargarse hasta alcanzar la Capacidad de Campo ({w_max_val} mm) en un solo evento para destrabar la emergencia.")
+
         with col_gauge:
-            fig_gauge = go.Figure(go.Indicator(mode="gauge+number+delta", value=dga_hoy, title={'text': "<b>°Cd Acumulados</b>"},
-                delta={'reference': dga_optimo}, gauge={'axis': {'range': [None, dga_critico*1.2]}, 'bar': {'color': "#166534"},
-                'steps': [{'range': [0, dga_optimo], 'color': "#4ade80"}, {'range': [dga_optimo, dga_critico], 'color': "#facc15"}, {'range': [dga_critico, dga_critico*1.2], 'color': "#f87171"}]}))
+            max_axis = dga_critico * 1.2
+            fig_gauge = go.Figure()
+            fig_gauge.add_trace(go.Indicator(
+                mode="gauge+number",
+                value=dga_hoy,
+                domain={'x': [0, 1], 'y': [0, 1]},
+                title={'text': "<b>TT ACUMULADO (°Cd)</b>", 'font': {'size': 18}},
+                gauge={
+                    'axis': {'range': [None, max_axis]},
+                    'bar': {'color': "#1e293b", 'thickness': 0.3},
+                    'steps': [
+                        {'range': [0, dga_optimo], 'color': "#4ade80"},
+                        {'range': [dga_optimo, dga_critico], 'color': "#facc15"},
+                        {'range': [dga_critico, max_axis], 'color': "#f87171"}
+                    ],
+                    'threshold': {
+                        'line': {'color': "#2563eb", 'width': 6},
+                        'thickness': 0.8,
+                        'value': dga_7dias
+                    }
+                }
+            ))
+            fig_gauge.add_annotation(
+                x=0.5,
+                y=-0.1,
+                text=f"{msg_estado}<br>Pronóstico +7d: <b>{dga_7dias:.1f} °Cd</b>",
+                showarrow=False,
+                font=dict(size=14, color="#1e3a8a"),
+                align="center"
+            )
+            fig_gauge.update_layout(height=350, margin=dict(t=80, b=50, l=30, r=30))
             st.plotly_chart(fig_gauge, use_container_width=True)
 
-    # Tab2, Tab3, Tab4 (puedes copiar el resto del código original si lo necesitas, pero ya tienes lo esencial)
     with tab2:
-        st.plotly_chart(go.Figure(data=[go.Bar(x=df["Fecha"], y=df["Prec"], name='Lluvia'), go.Scatter(x=df["Fecha"], y=df["W_superficial"], name='Agua en suelo')]).update_layout(title="Balance Hídrico"), use_container_width=True)
+        st.header("💧 Dinámica Hídrica del Suelo (Balance Superficial)")
+        st.markdown(f"Visualización de las precipitaciones frente a la retención de agua en los primeros centímetros del suelo. La emergencia requiere que el suelo alcance su capacidad de campo ({w_max_val} mm) en un solo evento de lluvia para dispararse por primera vez.")
+        
+        fig_hidrico = go.Figure()
+        
+        fig_hidrico.add_trace(go.Bar(
+            x=df["Fecha"],
+            y=df["Prec"],
+            name='Lluvia Diaria (mm)',
+            marker_color='#93c5fd',
+            opacity=0.7
+        ))
+        
+        fig_hidrico.add_trace(go.Scatter(
+            x=df["Fecha"],
+            y=df["W_superficial"],
+            name='Agua en Suelo (0-10cm)',
+            mode='lines',
+            line=dict(color='#0284c7', width=3),
+            fill='tozeroy',
+            fillcolor='rgba(2, 132, 199, 0.2)'
+        ))
 
-    # ====================== DESCARGA ======================
+        fig_hidrico.add_hline(
+            y=w_max_val,
+            line_dash="dot",
+            line_color="#334155",
+            annotation_text=f"Capacidad Máx. ({w_max_val} mm)",
+            annotation_position="top left"
+        )
+
+        fig_hidrico.update_layout(
+            title="Precipitación vs. Retención Real de Humedad",
+            xaxis_title="Fecha",
+            yaxis_title="Milímetros (mm)",
+            height=450,
+            hovermode="x unified",
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+        )
+        st.plotly_chart(fig_hidrico, use_container_width=True)
+
+    with tab3:
+        st.header("🔍 Clasificación DTW (Azul)")
+        fecha_corte = pd.Timestamp("2026-05-01")
+        df_obs = df[df["Fecha"] < fecha_corte].copy()
+
+        if not df_obs.empty and df_obs["EMERREL"].sum() > 0:
+            jd_corte = df_obs["Julian_days"].max()
+            max_e = df_obs["EMERREL"].max() if df_obs["EMERREL"].max() > 0 else 1.0
+            JD_COM = cluster_model["JD_common"]
+            jd_grid = JD_COM[JD_COM <= jd_corte]
+            obs_norm = np.interp(jd_grid, df_obs["Julian_days"], df_obs["EMERREL"] / max_e)
+
+            dists = []
+            for m in cluster_model["curves_interp"]:
+                m_slice = m[JD_COM <= jd_corte]
+                m_norm = m_slice / m_slice.max() if m_slice.max() > 0 else m_slice
+                dists.append(dtw_distance(obs_norm, m_norm))
+
+            pred = int(np.argmin(dists))
+            cols = {0: "#0284c7", 1: "#16a34a", 2: "#ea580c"}
+
+            c1, c2 = st.columns([3, 1])
+            with c1:
+                fp = go.Figure()
+                fp.add_trace(go.Scatter(
+                    x=JD_COM,
+                    y=cluster_model["curves_interp"][pred],
+                    name="Patrón Histórico",
+                    line=dict(dash='dash', color=cols.get(pred))
+                ))
+                fp.add_trace(go.Scatter(
+                    x=jd_grid,
+                    y=obs_norm * cluster_model["curves_interp"][pred].max(),
+                    name="2026",
+                    line=dict(color='black', width=3)
+                ))
+                st.plotly_chart(fp, use_container_width=True)
+
+            with c2:
+                nombres_patrones = {0: "🌾 Bimodal", 1: "🌱 Temprano", 2: "🍂 Tardío"}
+                st.success(f"### {nombres_patrones.get(pred, 'Desconocido')}")
+                st.metric("DTW Score", f"{min(dists):.2f}")
+        else:
+            st.info("Datos insuficientes para clasificación DTW.")
+
+    with tab4:
+        st.subheader("🧪 Curva de Respuesta Fisiológica")
+        x_temps = np.linspace(0, 45, 200)
+        y_tt = [calculate_tt_scalar(t, t_base_val, t_opt_max, t_critica) for t in x_temps]
+        fig_bio = go.Figure()
+        fig_bio.add_trace(go.Scatter(
+            x=x_temps,
+            y=y_tt,
+            mode='lines',
+            line=dict(color='#2563eb', width=4),
+            fill='tozeroy'
+        ))
+        st.plotly_chart(fig_bio, use_container_width=True)
+
+    # -----------------------------------------------------
+    # EXPORTACIÓN
+    # -----------------------------------------------------
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         df.to_excel(writer, index=False, sheet_name='Data_Diaria')
-    st.sidebar.download_button("📥 Descargar Reporte Completo", output.getvalue(), "PREDWEEM_Decision_Malezas_Azul_v5.xlsx")
+        pd.DataFrame({
+            'Configuracion': ['T_Base', 'T_Optima', 'T_Critica', 'W_Max', 'Ke', 'Mod_Termico', 'Umbral_Termoinhibicion'],
+            'Valor': [t_base_val, t_opt_max, t_critica, w_max_val, ke_val, mod_termico, umbral_termoinhibicion]
+        }).to_excel(writer, sheet_name='Bio_Params', index=False)
+
+    st.sidebar.download_button(
+        "📥 Descargar Reporte Completo",
+        output.getvalue(),
+        "PREDWEEM_Operativo_Azul_vK4_9_8_Unificado.xlsx"
+    )
 
 else:
-    st.info("👋 Sube tus datos climáticos para activar el panel de decisiones.")
+    st.info("👋 Bienvenido a PREDWEEM. El sistema está esperando los datos climáticos para comenzar.")
