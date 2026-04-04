@@ -236,9 +236,7 @@ def load_data(file_uploader=None):
 modelo_ann, cluster_model = load_models()
 
 # --- HEADER PRINCIPAL ---
-st.title("🌾 PREDWEEM LOLIUM - Azul, Provincia de Buenos Aires
-LAT = -36.7770
-LON = -59.8586")
+st.title("🌾 PREDWEEM LOLIUM - Azul, Provincia de Buenos Aires LAT = -36.7770 LON = -59.8586")
 
 # --- MENÚ DESPLEGABLE: DATOS DEL LOTE (MAIN PAGE) ---
 with st.expander("📂 1. Datos del Lote", expanded=True):
