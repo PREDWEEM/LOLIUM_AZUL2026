@@ -489,7 +489,7 @@ df_campo_raw = load_data(archivo_campo, "azul_campo")
 
 st.sidebar.divider()
 st.sidebar.markdown("## ⚙️ 2. Fisiología y Logística")
-umbral_er = st.sidebar.slider("Umbral Alerta Temprana", 0.05, 0.80, 0.20)
+umbral_er = st.sidebar.slider("Umbral Alerta Temprana", 0.05, 0.80, 0.50)
 
 st.sidebar.markdown("**Ruptura de Dormición Estival (Escudo)**")
 umbral_termoinhibicion = st.sidebar.number_input(
@@ -729,7 +729,7 @@ if df_meteo_raw is not None and modelo_ann is not None:
     # -----------------------------------------------------
     st.title("🌾 PREDWEEM LOLIUM - AZUL 2026")
 
-    colorscale_hard = [[0.0, "green"], [0.19, "green"], [0.20, "red"], [1.0, "red"]]
+    colorscale_hard = [[0.0, "green"], [0.01, "green"], [0.02, "red"], [1.0, "red"]]
     fig_risk = go.Figure(data=go.Heatmap(z=[df["EMERREL"].values], x=df["Fecha"], y=["Emergencia"], colorscale=colorscale_hard, zmin=0, zmax=1, showscale=False))
     fig_risk.update_layout(height=120, margin=dict(t=30, b=0, l=10, r=10), title="Mapa de Riesgo Diario (Azul)")
     st.plotly_chart(fig_risk, use_container_width=True)
