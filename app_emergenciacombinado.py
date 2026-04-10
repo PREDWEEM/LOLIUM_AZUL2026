@@ -301,7 +301,7 @@ st.sidebar.image(
 
 st.sidebar.markdown("## ⚙️ 2. Fisiología y Logística")
 
-umbral_er = st.sidebar.slider("Umbral Alerta Temprana", 0.05, 0.80, 0.20)
+umbral_er = st.sidebar.slider("Umbral Alerta Temprana", 0.05, 0.80, 0.50)
 
 st.sidebar.markdown("**Ruptura de Dormición Estival (Escudo)**")
 umbral_termoinhibicion = st.sidebar.number_input(
@@ -449,8 +449,8 @@ if df_meteo_raw is not None and modelo_ann is not None:
     # Escala ajustada para visibilidad con umbral alto
     colorscale_hard = [
         [0.0, "green"],
-        [0.19, "green"],
-        [0.20, "red"],
+        [0.01, "green"],
+        [0.02, "red"],
         [1.0, "red"]
     ]
 
