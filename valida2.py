@@ -2,7 +2,7 @@
 # ===============================================================
 # 🌾 PREDWEEM INTEGRAL vK4.9.10 — LOLIUM AZUL 2026
 # Actualización:
-# - ADAPTACIÓN AZUL: Coordenadas mantenidas estrictamente en -36.78 para ET0.
+# - ADAPTACIÓN AZUL: Coordenadas mantenidas estrictamente en -36.87 para ET0.
 # - Validación: Match estricto de valores (Campo > 0 O Simulado > 0).
 # - Se eliminan los pares (0,0) para la correlación de flujos y el gráfico 1:1.
 # - UNIFICACIÓN MECANÍSTICA 100%: Reemplazo de flujos diarios por INTEGRACIÓN EN INTERVALOS.
@@ -138,8 +138,8 @@ def calculate_tt_scalar(t, t_base, t_opt, t_crit):
     elif t < t_crit: return (t - t_base) * ((t_crit - t) / (t_crit - t_opt))
     else: return 0.0
 
-def calcular_et0_hargreaves(jday, tmax, tmin, latitud=-36.78):
-    # Latitud ajustada para Azul (-36.78)
+def calcular_et0_hargreaves(jday, tmax, tmin, latitud=-36.87):
+    # Latitud ajustada para Azul (-36.87)
     lat_rad = np.radians(latitud)
     dr = 1 + 0.033 * np.cos(2 * np.pi / 365 * jday)
     dec = 0.409 * np.sin(2 * np.pi / 365 * jday - 1.39)
@@ -238,7 +238,7 @@ def calcular_metricas_validacion_integral(df_sync):
 # ---------------------------------------------------------
 modelo_ann, cluster_model = load_models()
 
-st.title("🌾 PREDWEEM LOLIUM - Azul (BA) Integral LAT = -36.7770 LON = -59.8586")
+st.title("🌾 PREDWEEM LOLIUM - Azul (BA) Integral LAT = -36.87 LON = -59.89")
 
 with st.expander("📂 1. Datos del Lote", expanded=True):
     col_upload, col_rastrojo = st.columns(2)
@@ -353,7 +353,7 @@ if df_meteo_raw is not None and modelo_ann is not None:
     df.loc[mask_ruptura, "EMERREL"] = np.maximum(df.loc[mask_ruptura, "EMERREL"], 0.75)
 
     # Balance Hídrico Superficial (Azul)
-    df["ET0"] = calcular_et0_hargreaves(df["Julian_days"].values, df["TMAX"].values, df["TMIN"].values, latitud=-36.78)
+    df["ET0"] = calcular_et0_hargreaves(df["Julian_days"].values, df["TMAX"].values, df["TMIN"].values, latitud=-36.87)
     df["W_superficial"] = balance_hidrico_superficial(df["Prec"].values, df["ET0"].values, w_max=w_max_val, ke_suelo=ke_val)
     humedad_relativa = df["W_superficial"] / w_max_val
     df["Hydric_Factor"] = 1 / (1 + np.exp(-10 * (humedad_relativa - 0.3)))
