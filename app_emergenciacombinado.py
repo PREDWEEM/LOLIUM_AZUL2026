@@ -1,10 +1,9 @@
-
 # -*- coding: utf-8 -*-
 # ===============================================================
 # 🌾 PREDWEEM OPERATIVO vK4.9.8 — LOLIUM AZUL 2026
 # Actualización:
 # - UI: "Datos del Lote" movido a st.expander en la página principal.
-# - ADAPTACIÓN AZUL: Coordenadas mantenidas estrictamente en -36.78 según indicación.
+# - ADAPTACIÓN AZUL: Coordenadas mantenidas estrictamente en -36.87 según indicación.
 # - UNIFICACIÓN MECANÍSTICA 100%: 
 #   * Eliminado el forzado empírico de 20 mm.
 #   * Eliminada la restricción histórica de 21 días / 50 mm para enero.
@@ -13,7 +12,7 @@
 # - NUEVO: Corte Hídrico Estricto (20% HR) acoplado a la sigmoide.
 # - NUEVO: Bloqueo de emergencia (0%) hasta que una LLUVIA PUNTUAL supere la Capacidad de Campo.
 # - NUEVO: Secado exponencial del suelo (Ke Dinámico / Factor Kr) en BHS.
-# - Evapotranspiración (ET0) mediante Hargreaves-Samani (Latitud mantenida: -36.78)
+# - Evapotranspiración (ET0) mediante Hargreaves-Samani (Latitud mantenida: -36.87)
 # - MEJORA: Sensibilidad térmica e hídrica agresiva según nivel de rastrojo (slider continuo).
 # - Gráfico dinámico de retención de agua en suelo vs Lluvias
 # - AJUSTE: Umbral de alerta por defecto y salto visual calibrado en 0.30.
@@ -172,8 +171,8 @@ def calculate_tt_scalar(t, t_base, t_opt, t_crit):
     else:
         return 0.0
 
-def calcular_et0_hargreaves(jday, tmax, tmin, latitud=-36.78):
-    # Latitud mantenida estrictamente en -36.78 (Azul)
+def calcular_et0_hargreaves(jday, tmax, tmin, latitud=-36.87):
+    # Latitud mantenida estrictamente en -36.87
     lat_rad = np.radians(latitud)
     dr = 1 + 0.033 * np.cos(2 * np.pi / 365 * jday)
     dec = 0.409 * np.sin(2 * np.pi / 365 * jday - 1.39)
@@ -272,7 +271,7 @@ def get_data(file_input):
 modelo_ann, cluster_model = load_models()
 
 # --- HEADER PRINCIPAL ---
-st.title("🌾 PREDWEEM LOLIUM - AZUL (BA) lat=-36.780223 lon=-59.867381")
+st.title("🌾 PREDWEEM LOLIUM - AZUL (BA) lat=-36.87 lon=-59.89")
 
 # --- MENÚ DESPLEGABLE: DATOS DEL LOTE (MAIN PAGE) ---
 with st.expander("📂 1. Datos del Lote", expanded=True):
@@ -373,8 +372,8 @@ if df is not None and modelo_ann is not None:
     df.loc[mask_ruptura, "EMERREL"] = np.maximum(df.loc[mask_ruptura, "EMERREL"], 0.75)
 
     # --- C. RESTRICCIÓN HÍDRICA Y TÉRMICA (MÓDULO MECANÍSTICO BHS) ---
-    # 1. Calculamos la Evapotranspiración (ET0) - Latitud mantenida en -36.78
-    df["ET0"] = calcular_et0_hargreaves(df["Julian_days"].values, df["TMAX"].values, df["TMIN"].values, latitud=-36.78)
+    # 1. Calculamos la Evapotranspiración (ET0) - Latitud mantenida en -36.87
+    df["ET0"] = calcular_et0_hargreaves(df["Julian_days"].values, df["TMAX"].values, df["TMIN"].values, latitud=-36.87)
     
     # 2. Ejecutamos el Balance Hídrico Superficial (Actualizado con Ke Dinámico)
     df["W_superficial"] = balance_hidrico_superficial(df["Prec"].values, df["ET0"].values, w_max=w_max_val, ke_suelo_max=ke_val)
