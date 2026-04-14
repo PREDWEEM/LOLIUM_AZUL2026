@@ -8,7 +8,7 @@ lon = -59.8906
 
 # Rango de fechas de tu archivo original
 start_date = "2026-01-01"
-end_date = "2026-03-29"
+end_date = "2026-04-14"
 
 # URL de la API de Open-Meteo para datos históricos diarios
 url = f"https://archive-api.open-meteo.com/v1/archive?latitude={lat}&longitude={lon}&start_date={start_date}&end_date={end_date}&daily=temperature_2m_max,temperature_2m_min,precipitation_sum&timezone=America%2FSao_Paulo"
