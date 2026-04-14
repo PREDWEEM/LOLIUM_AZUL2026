@@ -4,8 +4,8 @@ import sys
 import os
 
 # Coordenadas de Azul, Provincia de Buenos Aires
-LAT = -36.8721
-LON = -59.8906
+LAT = -36.7833
+LON = -59.8500
 ARCHIVO_CSV = 'meteo_daily.csv'
 
 def actualizar_pronostico():
