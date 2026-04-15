@@ -3,8 +3,8 @@ import pandas as pd
 import requests
 
 # Coordenadas de Azul, provincia de Buenos Aires
-lat = -36.7833
-lon = -59.8500
+lat = -36.87
+lon = -59.89
 
 # Rango de fechas de tu archivo original
 start_date = "2026-01-01"
