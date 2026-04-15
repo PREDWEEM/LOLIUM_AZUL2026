@@ -138,8 +138,8 @@ def calculate_tt_scalar(t, t_base, t_opt, t_crit):
     elif t < t_crit: return (t - t_base) * ((t_crit - t) / (t_crit - t_opt))
     else: return 0.0
 
-def calcular_et0_hargreaves(jday, tmax, tmin, latitud=-36.87):
-    # Latitud ajustada para Azul (-36.87)
+def calcular_et0_hargreaves(jday, tmax, tmin, latitud=-36.78):
+    # Latitud ajustada para Azul (-36.78)
     lat_rad = np.radians(latitud)
     dr = 1 + 0.033 * np.cos(2 * np.pi / 365 * jday)
     dec = 0.409 * np.sin(2 * np.pi / 365 * jday - 1.39)
