@@ -39,6 +39,41 @@ if 'arranque_fase' not in st.session_state:
 if 'arranque_fase' in st.session_state and st.session_state.arranque_fase == 1:
     st.session_state.arranque_fase = 2 
 
+
+# 1. PANTALLA DE CARGA Y CONFIGURACIÓN DE PÁGINA
+if 'arranque_fase' not in st.session_state:
+    # Ajustamos initial_sidebar_state a "expanded" para asegurar que el marco siempre esté visible al cargar
+    st.set_page_config(
+        page_title="PREDWEEM AZUL INTEGRAL", 
+        layout="wide", 
+        page_icon="🌾",
+        initial_sidebar_state="expanded" 
+    )
+    st.markdown("<br><br><br>", unsafe_allow_html=True)
+    st.info("🚜 **Iniciando Servidor PREDWEEM Integral...**")
+    st.progress(20)
+    
+    st.session_state.arranque_fase = 1
+    time.sleep(0.1)
+    st.rerun()
+
+# 2. INYECCIÓN DE CSS PARA ASEGURAR QUE EL MARCO SEA ACCESIBLE
+st.markdown("""
+<style>
+    /* Forzar visibilidad del menú lateral y evitar que se colapse en pantallas pequeñas */
+    [data-testid="stSidebar"] {
+        min-width: 300px !important;
+        max-width: 400px !important;
+    }
+    
+    /* Si el usuario está en móvil, asegurar que el botón de menú sea visible */
+    button[kind="header"] {
+        display: block !important;
+    }
+    
+    .main { background-color: #f8fafc; }
+</style>
+""", unsafe_allow_html=True)
 # ---------------------------------------------------------
 # 2. CONFIGURACIÓN DE ESTILOS GLOBALES
 # ---------------------------------------------------------
