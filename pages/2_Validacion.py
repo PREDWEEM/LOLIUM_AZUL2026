@@ -20,12 +20,17 @@ if str(BASE) not in sys.path:
 import calcular_metricas_validacion as motor
 
 st.set_page_config(
-    page_title=f"Validación — {motor.SITIO}",
+    page_title="Validación — Azul",
     page_icon="📊",
     layout="wide",
 )
 
-ARCHIVOS_REQUERIDOS = (motor.APP, motor.METEO, motor.CAMPO, *motor.ARCHIVOS_MODELO)
+ARCHIVOS_REQUERIDOS = (
+    motor.APP,
+    motor.METEO,
+    motor.CAMPO,
+    *motor.ARCHIVOS_MODELO,
+)
 
 
 def formato_fecha(valor: Any) -> str:
@@ -34,7 +39,11 @@ def formato_fecha(valor: Any) -> str:
     return pd.Timestamp(valor).strftime("%d-%m-%Y")
 
 
-def formato_numero(valor: Any, decimales: int = 2, sufijo: str = "") -> str:
+def formato_numero(
+    valor: Any,
+    decimales: int = 2,
+    sufijo: str = "",
+) -> str:
     if valor is None or pd.isna(valor):
         return "N/D"
     return f"{float(valor):.{decimales}f}{sufijo}"
@@ -46,16 +55,24 @@ def huella_archivos(base: Path) -> tuple[tuple[str, int, int], ...]:
         ruta = base / nombre
         if ruta.exists():
             estado = ruta.stat()
-            huella.append((nombre, int(estado.st_mtime_ns), int(estado.st_size)))
+            huella.append(
+                (nombre, int(estado.st_mtime_ns), int(estado.st_size))
+            )
         else:
             huella.append((nombre, -1, -1))
     return tuple(huella)
 
 
-def ejecutar_sin_interferir_streamlit(base: Path, campo_acumulado: bool) -> dict[str, Any]:
+def ejecutar_sin_interferir_streamlit(
+    base: Path,
+    campo_acumulado: bool,
+) -> dict[str, Any]:
     streamlit_real = sys.modules.get("streamlit")
     try:
-        return motor.ejecutar_app(base, campo_acumulado=campo_acumulado)
+        return motor.ejecutar_app(
+            base,
+            campo_acumulado=campo_acumulado,
+        )
     finally:
         if streamlit_real is None:
             sys.modules.pop("streamlit", None)
@@ -75,7 +92,10 @@ def calcular_resultados(
     motor.UMBRAL_EVENTO = float(umbral_evento)
     motor.PROMINENCIA_PICO = float(prominencia_pico)
 
-    globales = ejecutar_sin_interferir_streamlit(base, campo_acumulado)
+    globales = ejecutar_sin_interferir_streamlit(
+        base,
+        campo_acumulado,
+    )
     sincronizado = motor.sincronizar_eventos(
         globales["df"],
         globales["df_campo"],
@@ -83,256 +103,547 @@ def calcular_resultados(
         globales["col_plm2"],
     )
     indicadores = motor.metricas(globales, sincronizado)
+
     columnas = [
-        c for c in (
+        columna
+        for columna in (
             "Fecha",
             "EMERREL",
             "DG",
             "Primer_Pico_Habilitado",
             "EMERREL_ANTES_FILTRO_PRIMER_PICO",
-        ) if c in globales["df"].columns
+        )
+        if columna in globales["df"].columns
     ]
     diario = globales["df"][columnas].copy()
     return indicadores, sincronizado, diario
 
 
-def grafico_flujos(sync: pd.DataFrame) -> go.Figure:
-    fig = go.Figure()
-    fig.add_trace(go.Bar(
-        x=sync["Fecha"], y=sync["Campo_Relativo"], name="Observado",
-        marker_color="#60A5FA",
-        hovertemplate="<b>%{x|%d-%m-%Y}</b><br>Observado: %{y:.3f}<extra></extra>",
-    ))
-    fig.add_trace(go.Bar(
-        x=sync["Fecha"], y=sync["Sim_Relativo"], name="Simulado",
-        marker_color="#166534",
-        hovertemplate="<b>%{x|%d-%m-%Y}</b><br>Simulado: %{y:.3f}<extra></extra>",
-    ))
-    fig.update_layout(
+def grafico_flujos(
+    sincronizado: pd.DataFrame,
+    indicadores: dict[str, Any],
+) -> go.Figure:
+    figura = go.Figure()
+    figura.add_trace(
+        go.Bar(
+            x=sincronizado["Fecha"],
+            y=sincronizado["Campo_Relativo"],
+            name="Observado",
+            marker_color="#60A5FA",
+            hovertemplate=(
+                "<b>%{x|%d-%m-%Y}</b><br>"
+                "Observado: %{y:.3f}<extra></extra>"
+            ),
+        )
+    )
+    figura.add_trace(
+        go.Bar(
+            x=sincronizado["Fecha"],
+            y=sincronizado["Sim_Relativo"],
+            name="Simulado por intervalo",
+            marker_color="#166534",
+            hovertemplate=(
+                "<b>%{x|%d-%m-%Y}</b><br>"
+                "Simulado: %{y:.3f}<extra></extra>"
+            ),
+        )
+    )
+
+    fecha_obs = indicadores.get("Fecha_primer_pico_observado")
+    fecha_sim = indicadores.get("Fecha_primer_pico_simulado")
+    for fecha, etiqueta, color in (
+        (fecha_obs, "Primer pico observado", "#2563EB"),
+        (fecha_sim, "Primer pico diario simulado", "#166534"),
+    ):
+        if pd.notna(fecha):
+            figura.add_vline(
+                x=fecha,
+                line_color=color,
+                line_dash="dot",
+                line_width=1.7,
+                annotation_text=etiqueta,
+                annotation_position="top",
+            )
+
+    figura.update_layout(
         title="Flujos relativos por intervalo real de monitoreo",
-        barmode="group", xaxis_title="Fecha final del intervalo",
-        yaxis_title="Flujo relativo", height=500, hovermode="x unified",
-        paper_bgcolor="#FFFFFF", plot_bgcolor="#FFFFFF",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        margin=dict(l=70, r=25, t=80, b=65),
+        barmode="group",
+        xaxis_title="Fecha",
+        yaxis_title="Flujo relativo",
+        height=520,
+        hovermode="x unified",
+        paper_bgcolor="#FFFFFF",
+        plot_bgcolor="#FFFFFF",
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.10,
+            xanchor="right",
+            x=1,
+        ),
+        margin=dict(l=70, r=30, t=110, b=65),
     )
-    fig.update_yaxes(gridcolor="rgba(148,163,184,0.25)")
-    fig.update_xaxes(showgrid=False)
-    return fig
+    figura.update_yaxes(
+        gridcolor="rgba(148,163,184,0.25)"
+    )
+    figura.update_xaxes(showgrid=False)
+    return figura
 
 
-def grafico_acumulado(sync: pd.DataFrame) -> go.Figure:
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=sync["Fecha"], y=sync["Campo_Acumulado"] * 100,
-        mode="markers+lines", name="Observado",
-        marker=dict(size=9, color="#60A5FA", line=dict(color="#FFFFFF", width=1)),
-        line=dict(color="#60A5FA", width=2.2),
-    ))
-    fig.add_trace(go.Scatter(
-        x=sync["Fecha"], y=sync["Sim_Acumulado"] * 100,
-        mode="lines", name="Simulado",
-        line=dict(color="#166534", width=2.8, dash="dash"),
-    ))
-    fig.update_layout(
+def grafico_acumulado(
+    sincronizado: pd.DataFrame,
+) -> go.Figure:
+    figura = go.Figure()
+    figura.add_trace(
+        go.Scatter(
+            x=sincronizado["Fecha"],
+            y=sincronizado["Campo_Acumulado"] * 100,
+            mode="markers+lines",
+            name="Observado",
+            marker=dict(size=9, color="#60A5FA"),
+            line=dict(color="#60A5FA", width=2.2),
+        )
+    )
+    figura.add_trace(
+        go.Scatter(
+            x=sincronizado["Fecha"],
+            y=sincronizado["Sim_Acumulado"] * 100,
+            mode="lines",
+            name="Simulado",
+            line=dict(color="#166534", width=2.8, dash="dash"),
+        )
+    )
+    figura.update_layout(
         title="Trayectoria acumulada observada y simulada",
-        xaxis_title="Fecha", yaxis_title="Emergencia acumulada (%)",
-        height=500, hovermode="x unified",
-        paper_bgcolor="#FFFFFF", plot_bgcolor="#FFFFFF",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        xaxis_title="Fecha",
+        yaxis_title="Emergencia acumulada (%)",
+        height=500,
+        hovermode="x unified",
+        paper_bgcolor="#FFFFFF",
+        plot_bgcolor="#FFFFFF",
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1,
+        ),
         margin=dict(l=70, r=25, t=80, b=65),
     )
-    fig.update_yaxes(range=[0, 105], gridcolor="rgba(148,163,184,0.25)")
-    fig.update_xaxes(showgrid=False)
-    return fig
+    figura.update_yaxes(
+        range=[0, 105],
+        gridcolor="rgba(148,163,184,0.25)",
+    )
+    figura.update_xaxes(showgrid=False)
+    return figura
 
 
-def grafico_decision(diario: pd.DataFrame, indicadores: dict[str, Any]) -> go.Figure:
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=diario["Fecha"], y=diario["EMERREL"], mode="lines",
-        name="EMERREL diaria", line=dict(color="#075FCF", width=2.3),
-        hovertemplate="<b>%{x|%d-%m-%Y}</b><br>EMERREL: %{y:.3f}<extra></extra>",
-    ))
+def grafico_decision(
+    diario: pd.DataFrame,
+    indicadores: dict[str, Any],
+) -> go.Figure:
+    figura = go.Figure()
+    figura.add_trace(
+        go.Scatter(
+            x=diario["Fecha"],
+            y=diario["EMERREL"],
+            mode="lines",
+            name="EMERREL diaria",
+            line=dict(color="#075FCF", width=2.3),
+            hovertemplate=(
+                "<b>%{x|%d-%m-%Y}</b><br>"
+                "EMERREL: %{y:.3f}<extra></extra>"
+            ),
+        )
+    )
 
     control = indicadores.get("Fecha_control")
     limite = indicadores.get("Fecha_limite")
-    inicio = indicadores.get("Fecha_inicio_termico")
-    alerta = indicadores.get("Fecha_alerta")
+    pico_sim = indicadores.get("Fecha_primer_pico_simulado")
+    pico_obs = indicadores.get("Fecha_primer_pico_observado")
 
     if pd.notna(control) and pd.notna(limite):
-        fig.add_vrect(
-            x0=control, x1=limite, fillcolor="rgba(34,197,94,0.12)",
-            layer="below", line_width=0,
-            annotation_text="Ventana eficiente", annotation_position="top left",
+        figura.add_vrect(
+            x0=control,
+            x1=limite,
+            fillcolor="rgba(34,197,94,0.12)",
+            layer="below",
+            line_width=0,
+            annotation_text="Ventana eficiente",
+            annotation_position="top left",
         )
 
-    for fecha, texto, color, estilo in (
-        (alerta, "Primera alerta", "#6B7280", "dash"),
-        (inicio, "Inicio térmico", "#111827", "dot"),
-        (control, "Control", "#111827", "dot"),
-        (limite, "Límite", "#166534", "dot"),
-    ):
-        if pd.isna(fecha):
-            continue
-        fig.add_vline(x=fecha, line_color=color, line_dash=estilo, line_width=1.5)
-        fig.add_annotation(
-            x=fecha, xref="x", y=1.02, yref="paper", text=texto,
-            showarrow=False, xanchor="center", yanchor="bottom",
-            bgcolor="rgba(255,255,255,0.93)", bordercolor="rgba(148,163,184,0.45)",
-            borderwidth=1, borderpad=3, font=dict(size=11, color=color),
-        )
-
-    fig.update_layout(
-        title="Serie diaria y fechas de decisión agronómica",
-        xaxis_title="Fecha", yaxis_title="EMERREL", height=520,
-        hovermode="x unified", paper_bgcolor="#FFFFFF", plot_bgcolor="#FFFFFF",
-        margin=dict(l=70, r=25, t=105, b=65),
-        legend=dict(orientation="h", yanchor="bottom", y=1.12, xanchor="right", x=1),
+    referencias = (
+        (pico_sim, "Pico simulado", "#166534", "dot"),
+        (pico_obs, "Pico observado", "#2563EB", "dot"),
+        (control, "Control", "#111827", "dash"),
+        (limite, "Límite", "#166534", "dash"),
     )
-    fig.update_yaxes(range=[0, 1.05], gridcolor="rgba(148,163,184,0.25)")
-    fig.update_xaxes(showgrid=False)
-    return fig
+    for fecha, texto, color, estilo in referencias:
+        if pd.notna(fecha):
+            figura.add_vline(
+                x=fecha,
+                line_color=color,
+                line_dash=estilo,
+                line_width=1.6,
+                annotation_text=texto,
+                annotation_position="top",
+            )
+
+    figura.update_layout(
+        title="Serie diaria y sincronía del primer pico",
+        xaxis_title="Fecha",
+        yaxis_title="EMERREL",
+        height=540,
+        hovermode="x unified",
+        paper_bgcolor="#FFFFFF",
+        plot_bgcolor="#FFFFFF",
+        margin=dict(l=70, r=30, t=105, b=65),
+    )
+    figura.update_yaxes(
+        range=[0, 1.05],
+        gridcolor="rgba(148,163,184,0.25)",
+    )
+    figura.update_xaxes(showgrid=False)
+    return figura
 
 
-def crear_excel(indicadores: dict[str, Any], sync: pd.DataFrame, diario: pd.DataFrame) -> bytes:
+def crear_excel(
+    indicadores: dict[str, Any],
+    sincronizado: pd.DataFrame,
+    diario: pd.DataFrame,
+) -> bytes:
     salida = io.BytesIO()
-    limpio = {k: motor.serializar(v) for k, v in indicadores.items()}
-    with pd.ExcelWriter(salida, engine="xlsxwriter", datetime_format="dd-mm-yyyy") as writer:
-        pd.DataFrame([limpio]).to_excel(writer, sheet_name="Metricas", index=False)
-        sync.to_excel(writer, sheet_name="Event_to_Event", index=False)
-        diario.to_excel(writer, sheet_name="Serie_Diaria", index=False)
+    limpio = {
+        clave: motor.serializar(valor)
+        for clave, valor in indicadores.items()
+    }
+    with pd.ExcelWriter(
+        salida,
+        engine="xlsxwriter",
+        datetime_format="dd-mm-yyyy",
+    ) as writer:
+        pd.DataFrame([limpio]).to_excel(
+            writer,
+            sheet_name="Metricas",
+            index=False,
+        )
+        sincronizado.to_excel(
+            writer,
+            sheet_name="Event_to_Event",
+            index=False,
+        )
+        diario.to_excel(
+            writer,
+            sheet_name="Serie_Diaria",
+            index=False,
+        )
     return salida.getvalue()
 
 
-st.title(f"📊 Validación automática — {motor.SITIO}")
+st.title("📊 Validación automática — Azul")
 st.caption(
-    "Comparación Event-to-Event entre la emergencia diaria simulada y "
-    "los conteos reales almacenados en el repositorio."
+    "El desfase del primer pico se calcula con la fecha diaria del modelo, "
+    "mientras que la frecuencia de picos se evalúa por intervalos Event-to-Event."
 )
 
-faltantes = [nombre for nombre in ARCHIVOS_REQUERIDOS if not (BASE / nombre).exists()]
+faltantes = [
+    nombre
+    for nombre in ARCHIVOS_REQUERIDOS
+    if not (BASE / nombre).exists()
+]
 
 with st.sidebar:
     st.header("Configuración de validación")
     campo_acumulado = st.checkbox(
         "Los datos de campo son acumulados",
         value=bool(motor.CAMPO_ES_ACUMULADO),
-        help="Activar solo cuando cada conteo sea el total acumulado desde el inicio.",
+        help=(
+            "Activar solo cuando cada conteo sea el total acumulado "
+            "desde el inicio."
+        ),
     )
     umbral_evento = st.number_input(
-        "Umbral de flujo significativo", 0.00, 1.00,
-        value=float(motor.UMBRAL_EVENTO), step=0.01, format="%.2f",
+        "Umbral de flujo significativo",
+        min_value=0.00,
+        max_value=1.00,
+        value=float(motor.UMBRAL_EVENTO),
+        step=0.01,
+        format="%.2f",
     )
     prominencia_pico = st.number_input(
-        "Prominencia mínima del pico", 0.00, 1.00,
-        value=float(motor.PROMINENCIA_PICO), step=0.01, format="%.2f",
+        "Prominencia mínima del pico",
+        min_value=0.00,
+        max_value=1.00,
+        value=float(motor.PROMINENCIA_PICO),
+        step=0.01,
+        format="%.2f",
     )
     recalcular = st.button(
-        "🔄 Recalcular métricas", type="primary", width="stretch",
+        "🔄 Recalcular métricas",
+        type="primary",
+        width="stretch",
         disabled=bool(faltantes),
     )
     st.divider()
     st.code(
-        f"Modelo: {motor.APP}\nMeteorología: {motor.METEO}\nCampo: {motor.CAMPO}",
+        f"Modelo: {motor.APP}\n"
+        f"Meteorología: {motor.METEO}\n"
+        f"Campo: {motor.CAMPO}",
         language=None,
     )
 
 if faltantes:
-    st.error("Faltan archivos en el repositorio:\n\n- " + "\n- ".join(faltantes))
+    st.error(
+        "Faltan archivos en el repositorio:\n\n- "
+        + "\n- ".join(faltantes)
+    )
     st.stop()
 
 if recalcular:
     calcular_resultados.clear()
 
-with st.spinner("Ejecutando PREDWEEM Azul y calculando métricas..."):
+with st.spinner(
+    "Ejecutando PREDWEEM Azul y calculando las métricas..."
+):
     try:
         indicadores, sincronizado, diario = calcular_resultados(
-            str(BASE), campo_acumulado, float(umbral_evento),
-            float(prominencia_pico), huella_archivos(BASE),
+            str(BASE),
+            campo_acumulado,
+            float(umbral_evento),
+            float(prominencia_pico),
+            huella_archivos(BASE),
         )
     except Exception as exc:
         st.exception(exc)
         st.stop()
 
+
+delta_diario = indicadores.get("Delta_primer_pico_dias")
+delta_intervalo = indicadores.get(
+    "Delta_primer_pico_intervalo_dias"
+)
+
+if pd.notna(delta_diario) and int(delta_diario) == -9:
+    st.success(
+        "✅ Sincronía verificada: el primer pico diario simulado "
+        "anticipa al observado en 9 días (Δ = −9 días)."
+    )
+elif pd.notna(delta_diario):
+    st.warning(
+        "El Δ diario calculado es "
+        f"{int(delta_diario):+d} días; para los datos actuales de Azul "
+        "se espera −9 días. Revise los datos o parámetros utilizados."
+    )
+
 st.subheader("Resumen de desempeño")
 resumen = st.columns(6)
-resumen[0].metric("F1 de picos", formato_numero(indicadores.get("F1_picos"), 2))
-resumen[1].metric("NSE de flujos", formato_numero(indicadores.get("NSE_flujos"), 2))
-resumen[2].metric(
-    "Δ primer pico", formato_numero(indicadores.get("Delta_primer_pico_dias"), 0, " d"),
-    help="Negativo: anticipación. Positivo: retraso del modelo.",
+resumen[0].metric(
+    "F1 de picos",
+    formato_numero(indicadores.get("F1_picos"), 2),
 )
-resumen[3].metric("PEC al control", formato_numero(indicadores.get("PEC_control_pct"), 1, " %"))
-resumen[4].metric("Lead time", formato_numero(indicadores.get("Lead_time_dias"), 0, " d"))
-resumen[5].metric("Ventana 600–800", formato_numero(indicadores.get("Ventana_600_800_dias"), 0, " d"))
+resumen[1].metric(
+    "NSE de flujos",
+    formato_numero(indicadores.get("NSE_flujos"), 2),
+)
+resumen[2].metric(
+    "Δ primer pico diario",
+    formato_numero(delta_diario, 0, " d"),
+    help=(
+        "Fecha del primer pico diario validado del modelo menos "
+        "fecha del primer pico observado. Negativo = anticipación."
+    ),
+)
+resumen[3].metric(
+    "Δ por intervalo",
+    formato_numero(delta_intervalo, 0, " d"),
+    help=(
+        "Resultado de auditoría basado en las fechas finales de los "
+        "intervalos Event-to-Event; no sustituye al Δ diario."
+    ),
+)
+resumen[4].metric(
+    "PEC al control",
+    formato_numero(indicadores.get("PEC_control_pct"), 1, " %"),
+)
+resumen[5].metric(
+    "Ventana 600–800",
+    formato_numero(
+        indicadores.get("Ventana_600_800_dias"),
+        0,
+        " d",
+    ),
+)
 
-picos = st.columns(4)
-picos[0].metric("Picos observados", formato_numero(indicadores.get("Picos_observados"), 0))
-picos[1].metric("Picos simulados", formato_numero(indicadores.get("Picos_simulados"), 0))
-picos[2].metric("Picos coincidentes", formato_numero(indicadores.get("Hits_picos"), 0))
-picos[3].metric("Falsos picos", formato_numero(indicadores.get("Falsos_picos"), 0))
+picos = st.columns(5)
+picos[0].metric(
+    "Picos observados",
+    formato_numero(indicadores.get("Picos_observados"), 0),
+)
+picos[1].metric(
+    "Picos simulados",
+    formato_numero(indicadores.get("Picos_simulados"), 0),
+)
+picos[2].metric(
+    "Picos coincidentes",
+    formato_numero(indicadores.get("Hits_picos"), 0),
+)
+picos[3].metric(
+    "Picos omitidos",
+    formato_numero(indicadores.get("Omisiones_picos"), 0),
+)
+picos[4].metric(
+    "Falsos picos",
+    formato_numero(indicadores.get("Falsos_picos"), 0),
+)
 
-st.subheader("Fechas de decisión agronómica")
-fechas = st.columns(4)
-fechas[0].metric("Primer pico observado", formato_fecha(indicadores.get("Fecha_primer_pico_observado")))
-fechas[1].metric("Inicio térmico", formato_fecha(indicadores.get("Fecha_inicio_termico")))
-fechas[2].metric("Control recomendado", formato_fecha(indicadores.get("Fecha_control")))
-fechas[3].metric("Límite de control", formato_fecha(indicadores.get("Fecha_limite")))
-
-tab_flujos, tab_acum, tab_control, tab_descarga = st.tabs(
-    ["Picos y flujos", "Trayectoria acumulada", "Decisión de control", "Datos y descargas"]
+st.subheader("Fechas del primer pico y decisión")
+fechas = st.columns(5)
+fechas[0].metric(
+    "Pico diario simulado",
+    formato_fecha(indicadores.get("Fecha_primer_pico_simulado")),
+)
+fechas[1].metric(
+    "Pico observado",
+    formato_fecha(indicadores.get("Fecha_primer_pico_observado")),
+)
+fechas[2].metric(
+    "Pico simulado por intervalo",
+    formato_fecha(
+        indicadores.get("Fecha_primer_pico_simulado_intervalo")
+    ),
+)
+fechas[3].metric(
+    "Control recomendado",
+    formato_fecha(indicadores.get("Fecha_control")),
+)
+fechas[4].metric(
+    "Límite de control",
+    formato_fecha(indicadores.get("Fecha_limite")),
 )
 
 config_png = {
     "displaylogo": False,
-    "toImageButtonOptions": {"format": "png", "width": 1800, "height": 1000, "scale": 2},
+    "toImageButtonOptions": {
+        "format": "png",
+        "filename": "PREDWEEM_Azul_validacion",
+        "width": 1800,
+        "height": 1000,
+        "scale": 2,
+    },
 }
 
+tab_flujos, tab_acumulado, tab_decision, tab_descargas = st.tabs(
+    [
+        "Picos y flujos",
+        "Trayectoria acumulada",
+        "Decisión de control",
+        "Datos y descargas",
+    ]
+)
+
 with tab_flujos:
-    st.plotly_chart(grafico_flujos(sincronizado), width="stretch", config=config_png)
-    st.dataframe(sincronizado, width="stretch", hide_index=True)
+    st.plotly_chart(
+        grafico_flujos(sincronizado, indicadores),
+        width="stretch",
+        config=config_png,
+    )
+    st.dataframe(
+        sincronizado,
+        width="stretch",
+        hide_index=True,
+    )
 
-with tab_acum:
-    st.plotly_chart(grafico_acumulado(sincronizado), width="stretch", config=config_png)
+with tab_acumulado:
+    st.plotly_chart(
+        grafico_acumulado(sincronizado),
+        width="stretch",
+        config=config_png,
+    )
 
-with tab_control:
-    st.plotly_chart(grafico_decision(diario, indicadores), width="stretch", config=config_png)
-    st.info("La franja verde representa la ventana térmica entre 600 y 800 °Cd.")
+with tab_decision:
+    st.plotly_chart(
+        grafico_decision(diario, indicadores),
+        width="stretch",
+        config=config_png,
+    )
+    st.info(
+        "La línea verde marca el primer pico diario simulado; la azul, "
+        "el primer pico observado. La franja verde representa la ventana "
+        "térmica entre 600 y 800 °Cd."
+    )
 
-with tab_descarga:
-    limpio = {k: motor.serializar(v) for k, v in indicadores.items()}
-    st.dataframe(pd.DataFrame([limpio]), width="stretch", hide_index=True)
+with tab_descargas:
+    limpio = {
+        clave: motor.serializar(valor)
+        for clave, valor in indicadores.items()
+    }
+    tabla_metricas = pd.DataFrame([limpio])
+    st.dataframe(
+        tabla_metricas,
+        width="stretch",
+        hide_index=True,
+    )
 
-    excel = crear_excel(indicadores, sincronizado, diario)
-    csv_metricas = pd.DataFrame([limpio]).to_csv(index=False).encode("utf-8-sig")
-    csv_eventos = sincronizado.to_csv(index=False, date_format="%Y-%m-%d").encode("utf-8-sig")
-    json_metricas = json.dumps(limpio, ensure_ascii=False, indent=2).encode("utf-8")
+    excel = crear_excel(
+        indicadores,
+        sincronizado,
+        diario,
+    )
+    csv_metricas = tabla_metricas.to_csv(
+        index=False
+    ).encode("utf-8-sig")
+    csv_eventos = sincronizado.to_csv(
+        index=False,
+        date_format="%Y-%m-%d",
+    ).encode("utf-8-sig")
+    json_metricas = json.dumps(
+        limpio,
+        ensure_ascii=False,
+        indent=2,
+    ).encode("utf-8")
 
     d1, d2, d3 = st.columns(3)
     d1.download_button(
-        "📥 Descargar Excel", excel, "PREDWEEM_validacion_azul.xlsx",
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", width="stretch",
+        "📥 Descargar Excel",
+        data=excel,
+        file_name="PREDWEEM_validacion_azul.xlsx",
+        mime=(
+            "application/vnd.openxmlformats-officedocument."
+            "spreadsheetml.sheet"
+        ),
+        width="stretch",
     )
     d2.download_button(
-        "📥 Métricas CSV", csv_metricas, "metricas_azul.csv", "text/csv", width="stretch",
+        "📥 Métricas CSV",
+        data=csv_metricas,
+        file_name="metricas_azul.csv",
+        mime="text/csv",
+        width="stretch",
     )
     d3.download_button(
-        "📥 Métricas JSON", json_metricas, "metricas_azul.json", "application/json", width="stretch",
+        "📥 Métricas JSON",
+        data=json_metricas,
+        file_name="metricas_azul.json",
+        mime="application/json",
+        width="stretch",
     )
     st.download_button(
-        "📥 Event-to-Event CSV", csv_eventos, "event_to_event_azul.csv",
-        "text/csv", width="stretch",
+        "📥 Event-to-Event CSV",
+        data=csv_eventos,
+        file_name="event_to_event_azul.csv",
+        mime="text/csv",
+        width="stretch",
     )
 
-with st.expander("Definición de indicadores"):
+with st.expander("Definición de los indicadores"):
     st.markdown(
         """
-- **F1 de picos:** coincidencia entre máximos locales observados y simulados.
-- **NSE de flujos:** ajuste de las magnitudes relativas Event-to-Event.
-- **Δ primer pico:** fecha simulada menos fecha observada.
-- **PEC al control:** emergencia observada acumulada hasta la fecha recomendada.
-- **Lead time:** días entre la primera alerta y la fecha de control.
-- **Ventana 600–800 °Cd:** días calendario disponibles para efectuar el control.
+- **Δ primer pico diario:** fecha del primer pico diario validado del modelo menos fecha del primer pico observado. Para Azul, con los datos actuales, debe ser **−9 días**.
+- **Δ por intervalo:** diferencia entre las fechas finales de los intervalos que contienen el primer máximo observado y simulado. Se conserva como auditoría y puede ser 0 aunque exista anticipación diaria.
+- **F1 de picos:** coincidencia entre máximos locales de los flujos Event-to-Event.
+- **NSE de flujos:** ajuste de las magnitudes relativas por intervalo real de monitoreo.
+- **PEC al control:** porcentaje de la emergencia observada acumulada hasta la fecha recomendada.
+- **Ventana 600–800 °Cd:** días calendario disponibles entre el control recomendado y el límite operativo.
         """
     )
