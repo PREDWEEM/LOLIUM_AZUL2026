@@ -72,6 +72,26 @@ jobs:
           echo "--- métricas generadas ---"
           cat resultados_validacion/metricas_*.csv
 
+      - name: Verificar delta del primer pico de Azul
+        run: |
+          python - <<'PY'
+          import pandas as pd
+
+          ruta = "resultados_validacion/metricas_azul.csv"
+          datos = pd.read_csv(ruta)
+          obtenido = int(datos.loc[0, "Delta_primer_pico_dias"])
+          esperado = -9
+
+          print(f"Delta primer pico obtenido: {obtenido} días")
+          print(f"Delta primer pico esperado: {esperado} días")
+
+          if obtenido != esperado:
+              raise SystemExit(
+                  f"Delta primer pico incorrecto: {obtenido}; "
+                  f"se esperaba {esperado}."
+              )
+          PY
+
       - name: Guardar resultados actualizados
         if: github.event_name == 'push'
         run: |
