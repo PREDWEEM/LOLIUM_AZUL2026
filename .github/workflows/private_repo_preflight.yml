@@ -1,0 +1,50 @@
+name: Verificar despliegue privado
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Descargar repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Verificar recursos locales
+        shell: bash
+        run: |
+          set -euo pipefail
+          for file in \
+            app_emergenciacombinado.py \
+            app_emergenciacombinado_core.py \
+            meteo_daily.csv \
+            IW.npy LW.npy bias_IW.npy bias_out.npy \
+            modelo_clusters_k3.pkl COPYRIGHT.md; do
+            test -f "$file" || { echo "Falta: $file"; exit 1; }
+          done
+
+      - name: Verificar independencia de GitHub Raw
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -RIn --include='*.py' 'raw.githubusercontent.com/PREDWEEM/LOLIUM_AZUL2026' .; then
+            echo "Persisten dependencias públicas del propio repositorio."
+            exit 1
+          fi
+
+      - name: Verificar sintaxis Python
+        run: |
+          python -m py_compile app_emergenciacombinado.py app_emergenciacombinado_core.py
