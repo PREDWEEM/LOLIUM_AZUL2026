@@ -1,0 +1,61 @@
+# ============================================================
+# SECRETOS Y CREDENCIALES
+# ============================================================
+.env
+.env.*
+!.env.example
+
+.streamlit/secrets.toml
+secrets.toml
+
+credentials.json
+credentials*.json
+service-account*.json
+token.json
+token*.json
+
+*.pem
+*.key
+*.p12
+*.pfx
+
+# ============================================================
+# DATOS CONFIDENCIALES LOCALES
+# ============================================================
+data/private/
+data/raw_private/
+private_data/
+validation_private/
+calibration_private/
+contracts/
+
+# ============================================================
+# EXPORTACIONES Y ARCHIVOS TEMPORALES
+# ============================================================
+exports/
+PREDWEEM_*_Resultados_Completos.xlsx
+*.tmp
+*.log
+
+# ============================================================
+# PYTHON Y EDITORES
+# ============================================================
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+.vscode/
+.idea/
+
+# ============================================================
+# SISTEMA OPERATIVO
+# ============================================================
+.DS_Store
+Thumbs.db
+
+# Los pesos ANN y el clasificador NO se ignoran aquí porque el despliegue
+# privado actual los necesita dentro del checkout. En una arquitectura API,
+# deberán trasladarse a un repositorio privado de activos del modelo.
