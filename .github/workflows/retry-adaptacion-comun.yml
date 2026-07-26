@@ -1,4 +1,4 @@
-name: Reintentar adaptación común LOLIUM
+name: Diagnosticar y aplicar adaptación LOLIUM
 
 on:
   pull_request:
@@ -17,19 +17,26 @@ jobs:
           ref: agent/adaptacion-comun-lolium
           fetch-depth: 0
 
-      - name: Aplicar paquete verificado
+      - name: Validar y descomprimir paquete
         shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
-          import base64, gzip, subprocess
+          import base64, gzip, hashlib
           encoded = Path('.migration/adaptacion.patch.b64').read_text(encoding='utf-8').strip()
-          patch = gzip.decompress(base64.b64decode(encoded, validate=True))
-          path = Path('/tmp/adaptacion.patch')
-          path.write_bytes(patch)
-          subprocess.run(['git', 'apply', '--check', str(path)], check=True)
-          subprocess.run(['git', 'apply', str(path)], check=True)
+          print('Base64 chars:', len(encoded))
+          compressed = base64.b64decode(encoded, validate=True)
+          print('Gzip bytes:', len(compressed), hashlib.sha256(compressed).hexdigest())
+          patch = gzip.decompress(compressed)
+          print('Patch bytes:', len(patch), hashlib.sha256(patch).hexdigest())
+          Path('/tmp/adaptacion.patch').write_bytes(patch)
           PY
+
+      - name: Comprobar compatibilidad del parche
+        run: git apply --check --verbose /tmp/adaptacion.patch
+
+      - name: Aplicar parche
+        run: git apply /tmp/adaptacion.patch
 
       - name: Compilar
         run: python -m py_compile app_emergenciacombinado_core.py app_emergenciacombinado.py
