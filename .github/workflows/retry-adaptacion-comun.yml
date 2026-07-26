@@ -17,17 +17,14 @@ jobs:
           ref: agent/adaptacion-comun-lolium
           fetch-depth: 0
 
-      - name: Extraer y aplicar parche
+      - name: Aplicar paquete verificado
         shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
-          import base64, gzip, re, subprocess
-          workflow = Path('.github/workflows/export-lolium-source.yml').read_text(encoding='utf-8')
-          match = re.search(r'encoded = "([A-Za-z0-9+/=]+)"', workflow)
-          if not match:
-              raise RuntimeError('No se encontró el paquete de migración.')
-          patch = gzip.decompress(base64.b64decode(match.group(1)))
+          import base64, gzip, subprocess
+          encoded = Path('.migration/adaptacion.patch.b64').read_text(encoding='utf-8').strip()
+          patch = gzip.decompress(base64.b64decode(encoded, validate=True))
           path = Path('/tmp/adaptacion.patch')
           path.write_bytes(patch)
           subprocess.run(['git', 'apply', '--check', str(path)], check=True)
@@ -57,9 +54,10 @@ jobs:
       - name: Publicar archivos definitivos
         shell: bash
         run: |
+          rm -rf .migration
           rm -f .github/workflows/export-lolium-source.yml .github/workflows/retry-adaptacion-comun.yml
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add app_emergenciacombinado_core.py app_emergenciacombinado.py .github/workflows
+          git add -A
           git commit -m 'Unifica cálculo hídrico y validación Event-to-Event'
           git push origin HEAD:agent/adaptacion-comun-lolium
