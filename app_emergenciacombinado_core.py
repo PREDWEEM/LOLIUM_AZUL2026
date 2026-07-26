@@ -594,7 +594,7 @@ if df_meteo_raw is not None and modelo_ann is not None:
     emerrel_raw, _ = modelo_ann.predict(X)
     df["EMERREL"] = np.maximum(emerrel_raw, 0.0)
 
-    # 2. Choque Hídrico de Ruptura Temprana (45 mm por defecto; luego del día 45)
+    # 2. Choque Hídrico de Ruptura Temprana (45 mm por defecto; luego del día 25)
     df["Prec_3d"] = df["Prec"].rolling(window=3, min_periods=1).sum()
     mask_ruptura = (df["Julian_days"] > 25) & (df["Julian_days"] <= 110) & (df["Prec_3d"] >= umbral_choque_hidrico)
     df.loc[mask_ruptura, "EMERREL"] = np.maximum(df.loc[mask_ruptura, "EMERREL"], 0.75)
