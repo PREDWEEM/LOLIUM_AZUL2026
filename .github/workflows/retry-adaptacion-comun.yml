@@ -1,9 +1,8 @@
 name: Reintentar adaptación común LOLIUM
 
 on:
-  push:
-    branches:
-      - agent/adaptacion-comun-lolium
+  pull_request:
+    types: [synchronize, reopened]
 
 permissions:
   contents: write
