@@ -1,0 +1,66 @@
+name: Reintentar adaptación común LOLIUM
+
+on:
+  push:
+    branches:
+      - agent/adaptacion-comun-lolium
+
+permissions:
+  contents: write
+
+jobs:
+  adaptar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: agent/adaptacion-comun-lolium
+          fetch-depth: 0
+
+      - name: Extraer y aplicar parche
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import base64, gzip, re, subprocess
+          workflow = Path('.github/workflows/export-lolium-source.yml').read_text(encoding='utf-8')
+          match = re.search(r'encoded = "([A-Za-z0-9+/=]+)"', workflow)
+          if not match:
+              raise RuntimeError('No se encontró el paquete de migración.')
+          patch = gzip.decompress(base64.b64decode(match.group(1)))
+          path = Path('/tmp/adaptacion.patch')
+          path.write_bytes(patch)
+          subprocess.run(['git', 'apply', '--check', str(path)], check=True)
+          subprocess.run(['git', 'apply', str(path)], check=True)
+          PY
+
+      - name: Compilar
+        run: python -m py_compile app_emergenciacombinado_core.py app_emergenciacombinado.py
+
+      - name: Verificar arquitectura común
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          source = Path('app_emergenciacombinado_core.py').read_text(encoding='utf-8')
+          assert source.count('def simular_emergencia_local') == 1
+          optimizer = source[source.index('def optimizar_parametros_hidricos_2d'):]
+          assert 'simular_emergencia_local(' in optimizer
+          assert 'rango_ke' not in optimizer
+          assert 'rango_cobertura' in optimizer
+          assert 'Exponente Kr (secado superficial)' in source
+          assert 'idx_pronostico = min(idx_hoy + 7' in source
+          assert 'inicio_simulacion' in source and 'total_simulado' in source
+          PY
+          git diff --check
+
+      - name: Publicar archivos definitivos
+        shell: bash
+        run: |
+          rm -f .github/workflows/export-lolium-source.yml .github/workflows/retry-adaptacion-comun.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app_emergenciacombinado_core.py app_emergenciacombinado.py .github/workflows
+          git commit -m 'Unifica cálculo hídrico y validación Event-to-Event'
+          git push origin HEAD:agent/adaptacion-comun-lolium
