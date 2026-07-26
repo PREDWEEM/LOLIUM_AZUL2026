@@ -1,0 +1,106 @@
+name: Aplicar bloqueo inicial de 25 dias
+on:
+  push:
+    branches: [agent/bloqueo-emergencia-25-dias]
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/bloqueo-emergencia-25-dias
+          fetch-depth: 0
+      - name: Ajustar latencia y validar Python
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import ast, re, py_compile
+          ROOT=Path('.'); changed=[]
+          def starts(t):
+              x=[0]
+              for m in re.finditer(r'\n',t): x.append(m.end())
+              return x
+          def span(n,o): return (o[n.lineno-1]+n.col_offset,o[n.end_lineno-1]+n.end_col_offset)
+          def num(n,v): return isinstance(n,ast.Constant) and not isinstance(n.value,bool) and n.value==v
+          def tnames(n):
+              if isinstance(n,ast.Name): return [n.id]
+              if isinstance(n,ast.Attribute): return [n.attr]
+              if isinstance(n,(ast.Tuple,ast.List)): return [z for e in n.elts for z in tnames(e)]
+              return []
+          def lname(s): return 'LATENCIA' in s.upper() or 'BLOQUEO' in s.upper()
+          def collect(text,tree):
+              o=starts(text); r={}
+              def add(n,v):
+                  if getattr(n,'end_lineno',None) is not None: r[span(n,o)]=str(v)
+              for n in ast.walk(tree):
+                  if isinstance(n,ast.Assign):
+                      if any(lname(z) for q in n.targets for z in tnames(q)) and num(n.value,45): add(n.value,25)
+                  elif isinstance(n,ast.AnnAssign):
+                      if any(lname(z) for z in tnames(n.target)) and num(n.value,45): add(n.value,25)
+                  elif isinstance(n,(ast.FunctionDef,ast.AsyncFunctionDef,ast.Lambda)):
+                      a=list(n.args.posonlyargs)+list(n.args.args); d=[None]*(len(a)-len(n.args.defaults))+list(n.args.defaults)
+                      for arg,val in zip(a,d):
+                          if val is not None and lname(arg.arg) and num(val,45): add(val,25)
+                      for arg,val in zip(n.args.kwonlyargs,n.args.kw_defaults):
+                          if val is not None and lname(arg.arg) and num(val,45): add(val,25)
+                  elif isinstance(n,ast.Call):
+                      for kw in n.keywords:
+                          if kw.arg and lname(kw.arg) and num(kw.value,45): add(kw.value,25)
+                  elif isinstance(n,ast.Compare):
+                      s=ast.get_source_segment(text,n) or ''
+                      if re.search(r'Julian_days|dayofyear|\bJD\b|latencia|bloqueo',s,re.I):
+                          for q in [n.left]+list(n.comparators):
+                              if num(q,45): add(q,25)
+                              elif num(q,46): add(q,26)
+                  elif isinstance(n,ast.Dict):
+                      p=list(zip(n.keys,n.values)); labels=values=None
+                      for k,v in p:
+                          if isinstance(k,ast.Constant) and isinstance(k.value,str) and re.search(r'latencia|bloqueo',k.value,re.I) and num(v,45): add(v,25)
+                          if isinstance(k,ast.Constant) and isinstance(k.value,str) and isinstance(v,(ast.List,ast.Tuple)):
+                              if any(isinstance(e,ast.Constant) and isinstance(e.value,str) and re.search(r'latencia fija|bloqueo inicial',e.value,re.I) for e in v.elts): labels=v
+                              if k.value.lower() in {'valor','valores','value','values'}: values=v
+                      if labels is not None and values is not None:
+                          for i,e in enumerate(labels.elts):
+                              if isinstance(e,ast.Constant) and isinstance(e.value,str) and re.search(r'latencia fija|bloqueo inicial',e.value,re.I) and i<len(values.elts) and num(values.elts[i],45): add(values.elts[i],25)
+              return r
+          def lines(text):
+              out=[]
+              for line in text.splitlines(keepends=True):
+                  if re.search(r'latencia|bloqueo',line,re.I):
+                      line=re.sub(r'((?:latencia|bloqueo)[^\n]{0,90}?)\b45\b',lambda m:m.group(1)+'25',line,flags=re.I)
+                      line=re.sub(r'\bprimeros\s+45\s+d[ií]as\b','primeros 25 días',line,flags=re.I)
+                  if re.search(r'choque|ruptura|inicio|latencia',line,re.I): line=re.sub(r'\bJD\s*46\b','JD 26',line,flags=re.I)
+                  out.append(line)
+              return ''.join(out)
+          for p in sorted(ROOT.rglob('*.py')):
+              if any(x.startswith('.') for x in p.parts) or '__pycache__' in p.parts: continue
+              t=p.read_text(encoding='utf-8')
+              try: tree=ast.parse(t,filename=str(p))
+              except SyntaxError: continue
+              new=t
+              for (a,b),v in sorted(collect(t,tree).items(),reverse=True): new=new[:a]+v+new[b:]
+              new=lines(new)
+              if new!=t:
+                  p.write_text(new,encoding='utf-8'); py_compile.compile(str(p),doraise=True); changed.append(str(p))
+          bad=[]
+          for p in sorted(ROOT.rglob('*.py')):
+              if any(x.startswith('.') for x in p.parts) or '__pycache__' in p.parts: continue
+              t=p.read_text(encoding='utf-8')
+              try: tree=ast.parse(t,filename=str(p))
+              except SyntaxError: continue
+              if collect(t,tree): bad.append(f'{p}: referencias funcionales a 45/46 dias')
+              for i,line in enumerate(t.splitlines(),1):
+                  if re.search(r'((?:latencia|bloqueo)[^\n]{0,90}?)\b45\b',line,re.I): bad.append(f'{p}:{i}: texto de latencia en 45')
+                  if re.search(r'\bJD\s*46\b',line,re.I) and re.search(r'choque|ruptura|inicio|latencia',line,re.I): bad.append(f'{p}:{i}: inicio post-latencia en JD46')
+          if bad: raise SystemExit('\n'.join(bad))
+          print('Archivos modificados:',changed or 'ninguno; ya estaba en 25 dias')
+          PY
+          rm .github/workflows/aplicar-bloqueo-25.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Ajusta bloqueo inicial de emergencia a 25 dias"
+          git push origin agent/bloqueo-emergencia-25-dias
