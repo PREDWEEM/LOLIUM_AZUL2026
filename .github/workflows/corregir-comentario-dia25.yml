@@ -1,0 +1,33 @@
+name: Corregir comentario de latencia a dia 25
+on:
+  push:
+    branches: [agent/bloqueo-emergencia-25-dias]
+permissions:
+  contents: write
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/bloqueo-emergencia-25-dias
+      - shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import py_compile
+          path = Path('app_emergenciacombinado_core.py')
+          text = path.read_text(encoding='utf-8')
+          old = '# 2. Choque Hídrico de Ruptura Temprana (45 mm por defecto; luego del día 45)'
+          new = '# 2. Choque Hídrico de Ruptura Temprana (45 mm por defecto; luego del día 25)'
+          if text.count(old) != 1:
+              raise SystemExit(f'Se esperaba una coincidencia y se encontraron {text.count(old)}')
+          path.write_text(text.replace(old, new), encoding='utf-8')
+          py_compile.compile(str(path), doraise=True)
+          PY
+          rm .github/workflows/corregir-comentario-dia25.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Corrige comentario de inicio post-latencia"
+          git push origin agent/bloqueo-emergencia-25-dias
