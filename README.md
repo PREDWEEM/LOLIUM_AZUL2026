@@ -20,17 +20,20 @@ La implementación de este repositorio está orientada a **Azul** y debe utiliza
 
 La serie operativa `meteo_daily.csv` utiliza las coordenadas de Azul `-36.87, -59.89` y separa explícitamente los datos según su origen y función:
 
-- **ERA5-Land:** reanálisis histórico consolidado, utilizado hasta seis días antes de la fecha de ejecución.
-- **ECMWF IFS histórico:** completa los días recientes todavía no disponibles en ERA5-Land.
+- **ERA5-Land:** reanálisis histórico consolidado, utilizado hasta el último día que la API entrega completo.
+- **ERA5:** respaldo explícito si ERA5-Land no presenta una ventana reciente válida.
+- **ECMWF IFS histórico:** completa automáticamente los días posteriores al último reanálisis completo.
 - **ECMWF IFS HRES:** pronóstico operativo desde el día actual hasta siete días posteriores.
+
+Antes de descargar el histórico completo, el actualizador sondea una ventana reciente y detecta el último día con Tmax, Tmin y precipitación válidas. De esta manera, una demora transitoria de ERA5-Land no interrumpe el workflow: los días todavía incompletos pasan al bloque ECMWF IFS sin ser rellenados artificialmente.
 
 El archivo conserva las columnas requeridas por el modelo (`Fecha`, `TMAX`, `TMIN`, `Prec`) y añade:
 
 - `FUENTE`: producto meteorológico utilizado.
-- `TIPO`: `REANALISIS`, `HISTORICO_MODELO` o `PRONOSTICO`.
+- `TIPO`: `REANALISIS`, `REANALISIS_FALLBACK`, `HISTORICO_MODELO` o `PRONOSTICO`.
 - `FECHA_EMISION`: fecha y hora local de generación del bloque meteorológico.
 
-La precipitación faltante **no se reemplaza por cero ni se arrastra desde el día anterior**. Si la API devuelve un dato crítico ausente, fechas discontinuas, duplicados, precipitación negativa o una temperatura máxima inferior a la mínima, la actualización falla y conserva intacto el archivo operativo anterior.
+La precipitación faltante **no se reemplaza por cero ni se arrastra desde el día anterior**. Si la API devuelve fechas discontinuas, duplicados, precipitación negativa o una temperatura máxima inferior a la mínima dentro de un bloque que debería estar completo, la actualización falla y conserva intacto el archivo operativo anterior.
 
 La actualización automática se ejecuta diariamente a las **07:30** y **15:30**, hora de Argentina, y también puede iniciarse manualmente mediante GitHub Actions.
 
