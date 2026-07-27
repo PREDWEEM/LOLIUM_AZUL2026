@@ -16,6 +16,24 @@ PREDWEEM es una herramienta de apoyo a la toma de decisiones agronómicas basada
 
 La implementación de este repositorio está orientada a **Azul** y debe utilizarse considerando el dominio geográfico, climático y agronómico para el cual fue configurada, así como su estado específico de validación.
 
+## Estrategia meteorológica
+
+La serie operativa `meteo_daily.csv` utiliza las coordenadas de Azul `-36.87, -59.89` y separa explícitamente los datos según su origen y función:
+
+- **ERA5-Land:** reanálisis histórico consolidado, utilizado hasta seis días antes de la fecha de ejecución.
+- **ECMWF IFS histórico:** completa los días recientes todavía no disponibles en ERA5-Land.
+- **ECMWF IFS HRES:** pronóstico operativo desde el día actual hasta siete días posteriores.
+
+El archivo conserva las columnas requeridas por el modelo (`Fecha`, `TMAX`, `TMIN`, `Prec`) y añade:
+
+- `FUENTE`: producto meteorológico utilizado.
+- `TIPO`: `REANALISIS`, `HISTORICO_MODELO` o `PRONOSTICO`.
+- `FECHA_EMISION`: fecha y hora local de generación del bloque meteorológico.
+
+La precipitación faltante **no se reemplaza por cero ni se arrastra desde el día anterior**. Si la API devuelve un dato crítico ausente, fechas discontinuas, duplicados, precipitación negativa o una temperatura máxima inferior a la mínima, la actualización falla y conserva intacto el archivo operativo anterior.
+
+La actualización automática se ejecuta diariamente a las **07:30** y **15:30**, hora de Argentina, y también puede iniciarse manualmente mediante GitHub Actions.
+
 ## Preparación para repositorio privado
 
 La aplicación utiliza los recursos meteorológicos y científicos incluidos en el checkout local y no debe depender de URLs públicas del propio repositorio. Antes de cambiar la visibilidad, revise la guía [PRIVATE_REPOSITORY.md](PRIVATE_REPOSITORY.md) y ejecute el workflow **Verificar despliegue privado**.
