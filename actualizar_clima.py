@@ -3,16 +3,16 @@
 
 Estrategia de fuentes
 ---------------------
-- ERA5-Land: histórico consolidado hasta seis días antes de la ejecución.
-- ERA5: respaldo explícito si ERA5-Land no entrega datos válidos.
-- ECMWF IFS histórico: días recientes todavía no disponibles en ERA5-Land.
+- ERA5-Land: histórico consolidado hasta su último día realmente completo.
+- ERA5: respaldo explícito si ERA5-Land no entrega una ventana reciente válida.
+- ECMWF IFS histórico: cubre los días posteriores al último reanálisis completo.
 - ECMWF IFS HRES: pronóstico operativo desde hoy hasta +7 días.
 
 La precipitación faltante nunca se completa con cero ni se arrastra desde el día
-anterior. Las listas de variables se envían como cadenas separadas por comas,
-tal como define el esquema OpenAPI de Open-Meteo. Si el bloque diario histórico
-llega nulo, se vuelve a consultar la serie horaria y se agregan máximas, mínimas
-y precipitación diaria local.
+anterior. Antes de descargar el bloque histórico completo, el script sondea una
+ventana reciente para determinar el último día con Tmax, Tmin y precipitación
+válidas. Así evita pedir como reanálisis un día que todavía está incompleto y
+transfiere automáticamente ese tramo reciente a ECMWF IFS.
 """
 
 from __future__ import annotations
@@ -31,7 +31,8 @@ LON = -59.89
 TIMEZONE = "America/Argentina/Buenos_Aires"
 ARCHIVO_CSV = Path("meteo_daily.csv")
 FECHA_INICIO = date(2026, 1, 1)
-RETARDO_ERA5_DIAS = 6
+RETARDO_ERA5_OBJETIVO_DIAS = 5
+VENTANA_SONDEO_REANALISIS_DIAS = 21
 REFRESCO_ERA5_DIAS = 7
 HORIZONTE_PRONOSTICO_DIAS = 8  # hoy + 7 días
 TIMEOUT_SEGUNDOS = 90
@@ -138,15 +139,8 @@ def _agregar_metadatos(
     return df[COLUMNAS_SALIDA]
 
 
-def _consultar_diario(
-    url: str,
-    params: dict,
-    *,
-    fuente: str,
-    tipo: str,
-    fecha_emision: str,
-) -> pd.DataFrame:
-    payload = _get_json(url, params)
+def _extraer_diario_sin_validar(payload: dict) -> pd.DataFrame:
+    """Convierte el bloque diario en tabla sin rechazar todavía los nulos."""
     if "daily" not in payload:
         raise RuntimeError(f"Respuesta sin bloque 'daily': {payload}")
 
@@ -170,14 +164,26 @@ def _consultar_diario(
             f"Longitudes inconsistentes en la respuesta diaria: {longitudes}"
         )
 
-    df = pd.DataFrame(
+    return pd.DataFrame(
         {
-            "Fecha": daily["time"],
-            "TMAX": daily["temperature_2m_max"],
-            "TMIN": daily["temperature_2m_min"],
-            "Prec": daily["precipitation_sum"],
+            "Fecha": pd.to_datetime(daily["time"], errors="coerce"),
+            "TMAX": pd.to_numeric(daily["temperature_2m_max"], errors="coerce"),
+            "TMIN": pd.to_numeric(daily["temperature_2m_min"], errors="coerce"),
+            "Prec": pd.to_numeric(daily["precipitation_sum"], errors="coerce"),
         }
-    )
+    ).dropna(subset=["Fecha"])
+
+
+def _consultar_diario(
+    url: str,
+    params: dict,
+    *,
+    fuente: str,
+    tipo: str,
+    fecha_emision: str,
+) -> pd.DataFrame:
+    payload = _get_json(url, params)
+    df = _extraer_diario_sin_validar(payload)
     return _agregar_metadatos(
         df,
         fuente=fuente,
@@ -259,6 +265,93 @@ def _consultar_horario_agregado(
     )
 
 
+def _parametros_historicos(
+    fecha_desde: date,
+    fecha_hasta: date,
+    modelo: str,
+) -> dict:
+    return {
+        "latitude": LAT,
+        "longitude": LON,
+        "start_date": _fecha_iso(fecha_desde),
+        "end_date": _fecha_iso(fecha_hasta),
+        "models": modelo,
+        "timezone": TIMEZONE,
+        "temperature_unit": "celsius",
+        "precipitation_unit": "mm",
+        "cell_selection": "land",
+    }
+
+
+def _ultimo_dia_completo_modelo(
+    modelo: str,
+    fecha_objetivo: date,
+) -> date | None:
+    """Detecta el último día diario completo dentro de una ventana reciente."""
+    fecha_desde = max(
+        FECHA_INICIO,
+        fecha_objetivo - timedelta(days=VENTANA_SONDEO_REANALISIS_DIAS - 1),
+    )
+    params = {
+        **_parametros_historicos(fecha_desde, fecha_objetivo, modelo),
+        "daily": _lista_api(VARIABLES_DIARIAS),
+    }
+    print(
+        f"Sondeando disponibilidad de {modelo}: "
+        f"{fecha_desde} a {fecha_objetivo}..."
+    )
+    payload = _get_json("https://archive-api.open-meteo.com/v1/archive", params)
+    df = _extraer_diario_sin_validar(payload)
+    completos = df[
+        df[["TMAX", "TMIN", "Prec"]].notna().all(axis=1)
+        & (df["TMAX"] >= df["TMIN"])
+        & (df["Prec"] >= 0)
+    ]
+    if completos.empty:
+        return None
+    return pd.Timestamp(completos["Fecha"].max()).date()
+
+
+def _resolver_corte_reanalisis(
+    fecha_objetivo: date,
+) -> tuple[date, str, str, str]:
+    """Elige fuente y último día completo de reanálisis, sin inventar valores."""
+    candidatos = (
+        ("era5_land", "ERA5_LAND", "REANALISIS"),
+        ("era5", "ERA5", "REANALISIS_FALLBACK"),
+    )
+    errores: list[str] = []
+
+    for modelo, fuente, tipo in candidatos:
+        try:
+            ultimo = _ultimo_dia_completo_modelo(modelo, fecha_objetivo)
+        except Exception as exc:
+            errores.append(f"{modelo}: {exc}")
+            print(f"ADVERTENCIA: no se pudo sondear {modelo}: {exc}")
+            continue
+
+        if ultimo is None:
+            errores.append(f"{modelo}: sin días completos en la ventana")
+            print(f"ADVERTENCIA: {modelo} no presentó días completos recientes.")
+            continue
+
+        retraso_real = (fecha_objetivo - ultimo).days
+        if retraso_real > 0:
+            print(
+                f"ADVERTENCIA: {fuente} está incompleto hasta {fecha_objetivo}; "
+                f"se usará hasta {ultimo} y ECMWF IFS cubrirá los "
+                f"{retraso_real} día(s) posterior(es)."
+            )
+        else:
+            print(f"{fuente} disponible y completo hasta {ultimo}.")
+        return ultimo, modelo, fuente, tipo
+
+    raise DatosMeteorologicosAusentes(
+        "No se encontró ningún día completo reciente de ERA5-Land ni ERA5. "
+        + " | ".join(errores)
+    )
+
+
 def _descargar_historico_modelo(
     fecha_desde: date,
     fecha_hasta: date,
@@ -271,17 +364,7 @@ def _descargar_historico_modelo(
     if fecha_desde > fecha_hasta:
         return pd.DataFrame(columns=COLUMNAS_SALIDA)
 
-    base_params = {
-        "latitude": LAT,
-        "longitude": LON,
-        "start_date": _fecha_iso(fecha_desde),
-        "end_date": _fecha_iso(fecha_hasta),
-        "models": modelo,
-        "timezone": TIMEZONE,
-        "temperature_unit": "celsius",
-        "precipitation_unit": "mm",
-        "cell_selection": "land",
-    }
+    base_params = _parametros_historicos(fecha_desde, fecha_hasta, modelo)
     url = "https://archive-api.open-meteo.com/v1/archive"
 
     print(f"Descargando {fuente} diario: {fecha_desde} a {fecha_hasta}...")
@@ -308,42 +391,6 @@ def _descargar_historico_modelo(
         tipo=tipo,
         fecha_emision=fecha_emision,
     )
-
-
-def _descargar_historico(
-    fecha_desde: date,
-    fecha_hasta: date,
-    *,
-    modelo: str,
-    fuente: str,
-    tipo: str,
-    fecha_emision: str,
-) -> pd.DataFrame:
-    try:
-        return _descargar_historico_modelo(
-            fecha_desde,
-            fecha_hasta,
-            modelo=modelo,
-            fuente=fuente,
-            tipo=tipo,
-            fecha_emision=fecha_emision,
-        )
-    except DatosMeteorologicosAusentes as exc:
-        if modelo != "era5_land":
-            raise
-
-        # Respaldo explícito y trazable: ERA5 es más grueso, pero conserva
-        # consistencia de reanálisis y evita inventar lluvia.
-        print(f"ADVERTENCIA: ERA5-Land no entregó datos válidos: {exc}")
-        print("Usando ERA5 como respaldo explícito para este bloque histórico...")
-        return _descargar_historico_modelo(
-            fecha_desde,
-            fecha_hasta,
-            modelo="era5",
-            fuente="ERA5",
-            tipo="REANALISIS_FALLBACK",
-            fecha_emision=fecha_emision,
-        )
 
 
 def _descargar_pronostico(hoy: date, fecha_emision: str) -> pd.DataFrame:
@@ -441,30 +488,42 @@ def actualizar_meteorologia() -> pd.DataFrame:
     hoy = ahora.date()
     fecha_emision = ahora.isoformat(timespec="seconds")
 
-    era5_hasta = hoy - timedelta(days=RETARDO_ERA5_DIAS)
-    ifs_desde = max(FECHA_INICIO, era5_hasta + timedelta(days=1))
+    fecha_objetivo_reanalisis = hoy - timedelta(days=RETARDO_ERA5_OBJETIVO_DIAS)
+    (
+        reanalisis_hasta,
+        modelo_reanalisis,
+        fuente_reanalisis,
+        tipo_reanalisis,
+    ) = _resolver_corte_reanalisis(fecha_objetivo_reanalisis)
+
+    ifs_desde = max(FECHA_INICIO, reanalisis_hasta + timedelta(days=1))
     ifs_hasta = hoy - timedelta(days=1)
-    fecha_refresco_era5 = max(
+    fecha_refresco_reanalisis = max(
         FECHA_INICIO,
-        era5_hasta - timedelta(days=REFRESCO_ERA5_DIAS - 1),
+        reanalisis_hasta - timedelta(days=REFRESCO_ERA5_DIAS - 1),
     )
 
     existente = _leer_existente()
-    congelado = _bloque_reanalisis_congelado(existente, fecha_refresco_era5)
+    congelado = _bloque_reanalisis_congelado(
+        existente,
+        fecha_refresco_reanalisis,
+    )
 
     # Primera migración: reconstruye todo el histórico consolidado.
     # Ejecuciones posteriores: solo refresca la cola reciente del reanálisis.
-    era5_desde = FECHA_INICIO if congelado.empty else fecha_refresco_era5
-    era5 = _descargar_historico(
-        era5_desde,
-        era5_hasta,
-        modelo="era5_land",
-        fuente="ERA5_LAND",
-        tipo="REANALISIS",
+    reanalisis_desde = (
+        FECHA_INICIO if congelado.empty else fecha_refresco_reanalisis
+    )
+    reanalisis = _descargar_historico_modelo(
+        reanalisis_desde,
+        reanalisis_hasta,
+        modelo=modelo_reanalisis,
+        fuente=fuente_reanalisis,
+        tipo=tipo_reanalisis,
         fecha_emision=fecha_emision,
     )
 
-    ifs_reciente = _descargar_historico(
+    ifs_reciente = _descargar_historico_modelo(
         ifs_desde,
         ifs_hasta,
         modelo="ecmwf_ifs",
@@ -477,7 +536,7 @@ def actualizar_meteorologia() -> pd.DataFrame:
 
     bloques = [
         bloque
-        for bloque in (congelado, era5, ifs_reciente, pronostico)
+        for bloque in (congelado, reanalisis, ifs_reciente, pronostico)
         if not bloque.empty
     ]
     df_final = pd.concat(bloques, ignore_index=True)
