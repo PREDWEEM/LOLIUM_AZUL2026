@@ -9,11 +9,18 @@ resultados generados.
 """
 from pathlib import Path
 
+from visualizacion_horizonte_pronostico import mostrar_horizonte_pronostico
+
 _CORE_APP = Path(__file__).with_name("app_emergenciacombinado_core.py")
 exec(
     compile(_CORE_APP.read_text(encoding="utf-8"), str(_CORE_APP), "exec"),
     globals(),
 )
+
+# Panel exclusivamente visual: usa el horizonte ya presente en la serie.
+if "df" in globals() and isinstance(df, pd.DataFrame) and not df.empty:
+    st.divider()
+    mostrar_horizonte_pronostico(df, "Azul")
 
 
 def _fecha_excel(valor):
