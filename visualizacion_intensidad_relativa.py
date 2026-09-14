@@ -1,12 +1,15 @@
 # -*- coding: utf-8 -*-
-"""Escala visual relativa 0–100 % para el gráfico principal de PREDWEEM Azul.
+"""PREDWEEM Azul: decaimiento desde 15-abr + visualización relativa 0–100 %.
 
-La transformación es exclusivamente de presentación. No modifica EMERREL del
-motor ni, por lo tanto, Event-to-Event, T50, métricas, umbrales internos o
-clasificación. El máximo diario simulado de la campaña se muestra como 100 %.
+La normalización porcentual es exclusivamente visual. El decaimiento sí forma
+parte del modelo y modifica EMERREL antes de EMERAC, Event-to-Event, T50 y las
+métricas. La escala gráfica sigue mostrando el máximo diario de campaña como
+100 % sin renormalizar la señal interna del motor.
 """
 
 from __future__ import annotations
+
+from modelo_decaimiento_15abril import parchear_modelo_decaimiento_15abril
 
 
 def _reemplazar_unico(source: str, old: str, new: str, etiqueta: str) -> str:
@@ -30,7 +33,9 @@ def _reemplazar_n(source: str, old: str, new: str, cantidad_esperada: int, etiqu
 
 
 def parchear_visualizacion_intensidad_relativa(source: str) -> str:
-    """Reemplaza la escala logarítmica del gráfico principal por 0–100 %."""
+    """Aplica decaimiento del motor y reemplaza la escala logarítmica por 0–100 %."""
+
+    source = parchear_modelo_decaimiento_15abril(source)
 
     transformacion_old = '''    # Transformación Logarítmica Analítica
     c_log = 0.01
