@@ -23,6 +23,9 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Dependencias mínimas de prueba
+        run: python -m pip install --disable-pip-version-check numpy
+
       - name: Verificar recursos locales
         shell: bash
         run: |
@@ -30,6 +33,7 @@ jobs:
           for file in \
             app_emergenciacombinado.py \
             app_emergenciacombinado_core.py \
+            modelo_decaimiento_15abril.py \
             visualizacion_intensidad_relativa.py \
             meteo_daily.csv \
             IW.npy LW.npy bias_IW.npy bias_out.npy \
@@ -51,18 +55,47 @@ jobs:
           python -m py_compile \
             app_emergenciacombinado.py \
             app_emergenciacombinado_core.py \
+            modelo_decaimiento_15abril.py \
             visualizacion_intensidad_relativa.py
 
-      - name: Prueba preliminar de escala relativa 0-100
+      - name: Prueba preliminar de decaimiento y escala relativa
         run: |
           python - <<'PY'
           from pathlib import Path
+          import numpy as np
+          from modelo_decaimiento_15abril import factor_decaimiento_15abril
           from visualizacion_intensidad_relativa import parchear_visualizacion_intensidad_relativa
+
+          dias = [0, 0, 0, 30, 60]
+          activo = [False, False, True, True, True]
+          factor = factor_decaimiento_15abril(
+              dias,
+              activo,
+              tau=60,
+              beta=1.0,
+              intensidad=0.75,
+          )
+          assert np.allclose(factor[:2], [1.0, 1.0])
+          assert np.isclose(factor[2], 1.0)
+          assert factor[3] < 1.0 and factor[4] < factor[3]
+          assert np.all((factor >= 0.0) & (factor <= 1.0))
+
+          max_pre = 1.0
+          techo_15abr = 0.50 * max_pre * factor[2]
+          techo_15may = 0.50 * max_pre * factor[3]
+          assert np.isclose(techo_15abr, 0.50)
+          assert techo_15may < 0.50
+          assert np.isclose(min(0.90, techo_15abr), 0.50)
+          assert np.isclose(min(0.20, techo_15abr), 0.20)
 
           source = Path("app_emergenciacombinado_core.py").read_text(encoding="utf-8")
           patched = parchear_visualizacion_intensidad_relativa(source)
           compile(patched, "app_emergenciacombinado_core.py::patched", "exec")
 
+          assert 'EMERREL_ANTES_DECAIMIENTO_15ABR' in patched
+          assert 'Factor_Decaimiento_15Abr' in patched
+          assert 'Techo_EMERREL_15Abr' in patched
+          assert 'Fraccion_Maxima_15Abr' in patched
           assert 'EMERREL_REL_PCT' in patched
           assert 'Campo_Normalizado_PCT' in patched
           assert 'text="Intensidad relativa de emergencia (%)"' in patched
@@ -77,5 +110,5 @@ jobs:
           maximum = max(values)
           pct = [v / maximum * 100.0 for v in values]
           assert pct == [0.0, 25.0, 50.0, 100.0]
-          print("OK: Azul usa intensidad relativa de emergencia 0-100 % sin modificar EMERREL")
+          print("OK: Azul con decaimiento desde 15-abr + intensidad relativa 0-100 %")
           PY
