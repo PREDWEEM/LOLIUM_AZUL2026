@@ -52,6 +52,7 @@ jobs:
         run: |
           python - <<'PY'
           import pandas as pd
+          from actualizar_clima import FECHA_FIN
 
           archivo = 'meteo_daily.csv'
           df = pd.read_csv(archivo)
@@ -66,6 +67,8 @@ jobs:
           df['Fecha'] = pd.to_datetime(df['Fecha'], errors='coerce')
           if df['Fecha'].isna().any():
               raise SystemExit('Hay fechas inválidas.')
+          if (df['Fecha'].dt.date > FECHA_FIN).any():
+              raise SystemExit('Hay fechas posteriores al 1 de octubre de 2026.')
           if df['Fecha'].duplicated().any():
               raise SystemExit('Hay fechas duplicadas.')
           if df[['TMAX', 'TMIN', 'Prec']].isna().any().any():

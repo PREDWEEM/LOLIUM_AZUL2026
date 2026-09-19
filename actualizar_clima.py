@@ -32,6 +32,7 @@ LON = -59.89
 TIMEZONE = "America/Argentina/Buenos_Aires"
 ARCHIVO_CSV = Path("meteo_daily.csv")
 FECHA_INICIO = date(2026, 1, 1)
+FECHA_FIN = date(2026, 10, 1)  # Inclusive.
 RETARDO_ERA5_OBJETIVO_DIAS = 5
 VENTANA_SONDEO_REANALISIS_DIAS = 21
 REFRESCO_ERA5_DIAS = 7
@@ -405,6 +406,8 @@ def _descargar_historico_modelo(
 
 
 def _descargar_pronostico(hoy: date, fecha_emision: str) -> pd.DataFrame:
+    if hoy > FECHA_FIN:
+        return pd.DataFrame(columns=COLUMNAS_SALIDA)
     params = {
         "latitude": LAT,
         "longitude": LON,
@@ -412,18 +415,19 @@ def _descargar_pronostico(hoy: date, fecha_emision: str) -> pd.DataFrame:
         "timezone": TIMEZONE,
         "temperature_unit": "celsius",
         "precipitation_unit": "mm",
-        "forecast_days": HORIZONTE_PRONOSTICO_DIAS,
+        "forecast_days": min(HORIZONTE_PRONOSTICO_DIAS, (FECHA_FIN - hoy).days + 1),
         "cell_selection": "land",
     }
 
     print(f"Descargando ECMWF IFS HRES: {hoy} a hoy +7 días...")
-    return _consultar_diario(
+    pronostico = _consultar_diario(
         "https://api.open-meteo.com/v1/ecmwf",
         params,
         fuente="ECMWF_IFS_HRES",
         tipo="PRONOSTICO",
         fecha_emision=fecha_emision,
     )
+    return pronostico.loc[pronostico["Fecha"].dt.date <= FECHA_FIN].copy()
 
 
 def _leer_existente() -> pd.DataFrame:
@@ -496,6 +500,8 @@ def _validar_continuidad(df: pd.DataFrame, fecha_final: date) -> None:
     if df.empty:
         raise RuntimeError("La actualización produjo una tabla meteorológica vacía.")
 
+    if (df["Fecha"].dt.date > FECHA_FIN).any():
+        raise RuntimeError("Hay fechas posteriores al cierre de campaña.")
     esperadas = pd.date_range(FECHA_INICIO, fecha_final, freq="D")
     disponibles = pd.DatetimeIndex(df["Fecha"].dropna().unique()).normalize()
     faltantes = esperadas.difference(disponibles)
@@ -517,6 +523,7 @@ def actualizar_meteorologia() -> pd.DataFrame:
     fecha_emision = ahora.isoformat(timespec="seconds")
 
     fecha_objetivo_reanalisis = hoy - timedelta(days=RETARDO_ERA5_OBJETIVO_DIAS)
+    fecha_objetivo_reanalisis = min(fecha_objetivo_reanalisis, FECHA_FIN)
     (
         reanalisis_hasta,
         modelo_reanalisis,
@@ -525,7 +532,7 @@ def actualizar_meteorologia() -> pd.DataFrame:
     ) = _resolver_corte_reanalisis(fecha_objetivo_reanalisis)
 
     ifs_desde = max(FECHA_INICIO, reanalisis_hasta + timedelta(days=1))
-    ifs_hasta = hoy - timedelta(days=1)
+    ifs_hasta = min(hoy - timedelta(days=1), FECHA_FIN)
     fecha_refresco_reanalisis = max(
         FECHA_INICIO,
         reanalisis_hasta - timedelta(days=REFRESCO_ERA5_DIAS - 1),
@@ -541,7 +548,7 @@ def actualizar_meteorologia() -> pd.DataFrame:
     # Ejecuciones posteriores: solo refresca la cola reciente del reanálisis.
     reanalisis_desde = _inicio_recuperacion(congelado, fecha_refresco_reanalisis)
     congelado = congelado.loc[
-        congelado["Fecha"].dt.date < reanalisis_desde
+        pd.to_datetime(congelado["Fecha"]).dt.date < reanalisis_desde
     ].copy()
     reanalisis = _descargar_historico_modelo(
         reanalisis_desde,
@@ -576,7 +583,7 @@ def actualizar_meteorologia() -> pd.DataFrame:
         .reset_index(drop=True)
     )
 
-    fecha_final = hoy + timedelta(days=HORIZONTE_PRONOSTICO_DIAS - 1)
+    fecha_final = min(hoy + timedelta(days=HORIZONTE_PRONOSTICO_DIAS - 1), FECHA_FIN)
     df_final = df_final[
         (df_final["Fecha"].dt.date >= FECHA_INICIO)
         & (df_final["Fecha"].dt.date <= fecha_final)

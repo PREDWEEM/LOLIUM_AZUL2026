@@ -56,3 +56,12 @@ PREDWEEM es una herramienta de soporte para decisiones y no sustituye el diagnó
 ## Autoría
 
 **PREDWEEM by Guillermo R. Chantre**
+
+## Fin de carga de la campaña 2026
+
+La última fecha meteorológica es el **1 de octubre de 2026, inclusive**.
+El pronóstico se recorta al alcanzar ese límite. Desde el 2 de octubre
+no se consulta el pronóstico futuro. Las consultas históricas ERA5-Land,
+ERA5 y ECMWF IFS quedan limitadas al 1 de octubre, permitiendo actualizar
+el reanálisis de los días pendientes sin ampliar la campaña.
+La serie cerrada debe ser continua y no admite fechas posteriores al límite.

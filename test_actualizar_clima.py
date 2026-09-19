@@ -59,5 +59,32 @@ class RecuperacionMeteorologica(unittest.TestCase):
                     self.assertEqual(consultas[0][0], date(2026, 8, 12))
 
 
+    def test_cierre_campania(self):
+        from datetime import timedelta
+        for hoy in [date(2026, 9, 19), date(2026, 9, 28), date(2026, 10, 1), date(2026, 10, 2), date(2026, 10, 10)]:
+            with self.subTest(hoy=hoy), tempfile.TemporaryDirectory() as tmp:
+                destino = Path(tmp) / "meteo_daily.csv"
+                consultas = []
+                def historico(inicio, fin, **kw):
+                    self.assertLessEqual(fin, clima.FECHA_FIN)
+                    return bloque(inicio, fin, kw["tipo"])
+                def corte(objetivo):
+                    self.assertLessEqual(objetivo, clima.FECHA_FIN)
+                    return objetivo, "era5", "ERA5", "REANALISIS_FALLBACK"
+                def diario(url, params, **kw):
+                    consultas.append(params)
+                    return bloque(hoy, hoy + timedelta(days=7), "PRONOSTICO")
+                with patch.object(clima, "ARCHIVO_CSV", destino), patch.object(clima, "_ahora_local", return_value=datetime.combine(hoy, datetime.min.time())), patch.object(clima, "_resolver_corte_reanalisis", side_effect=corte), patch.object(clima, "_descargar_historico_modelo", side_effect=historico), patch.object(clima, "_consultar_diario", side_effect=diario), contextlib.redirect_stdout(io.StringIO()):
+                    salida = clima.actualizar_meteorologia()
+                fin = min(hoy + timedelta(days=7), clima.FECHA_FIN)
+                self.assertEqual(salida.Fecha.max(), fin.isoformat())
+                self.assertEqual(len(salida), (fin - clima.FECHA_INICIO).days + 1)
+                self.assertEqual(len(consultas), int(hoy <= clima.FECHA_FIN))
+                if consultas:
+                    self.assertEqual(consultas[0]["forecast_days"], min(8, (clima.FECHA_FIN-hoy).days+1))
+                else:
+                    self.assertFalse(salida.TIPO.eq("PRONOSTICO").any())
+
+
 if __name__ == "__main__":
     unittest.main()
