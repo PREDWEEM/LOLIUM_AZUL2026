@@ -1,49 +1,11 @@
-name: Actualizacion Diaria Clima Azul
+name: Actualización meteorológica manual (compatibilidad)
 
 on:
-  schedule:
-    # Se ejecuta 3 veces al día (Horarios en UTC):
-    # 11:00 UTC = 08:00 AM Argentina
-    # 17:00 UTC = 02:00 PM Argentina
-    # 23:00 UTC = 08:00 PM Argentina
-    - cron: '0 11,17,23 * * *'
-  workflow_dispatch: # Permite ejecución manual desde la pestaña Actions
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repositorio
-        uses: actions/checkout@v4
-
-      - name: Configurar Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.9'
-
-      - name: Instalar dependencias
-        run: |
-          pip install requests pandas
-
-      - name: Ejecutar script de clima
-        run: python actualizar_clima.py
-
-      - name: Subir cambios al repo
-        run: |
-          # Configuración del bot de GitHub
-          git config --global user.name 'github-actions[bot]'
-          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          
-          # Agregamos el archivo que genera el script (asegúrate que el .py use este nombre)
-          git add meteo_daily.csv
-          
-          # Solo hace commit si hay cambios reales en los datos
-          if git diff --staged --quiet; then
-            echo "No hay cambios nuevos en el pronóstico de Azul. Saltando commit."
-          else
-            git commit -m "Actualización programada: Clima Azul (ECMWF)"
-            git push
-          fi
+  actualizar:
+    uses: ./.github/workflows/actualizar_clima.yml

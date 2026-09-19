@@ -1,6 +1,13 @@
 name: Actualizar Datos Meteorológicos Azul
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - actualizar_clima.py
+      - test_actualizar_clima.py
+      - .github/workflows/actualizar_clima.yml
+  workflow_call:
   workflow_dispatch:
   schedule:
     # 07:30 y 15:30 de Argentina (UTC-3)
@@ -17,6 +24,7 @@ concurrency:
 jobs:
   actualizar-datos:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - name: Descargar el repositorio
@@ -33,6 +41,9 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install pandas requests
+
+      - name: Verificar recuperación tras interrupciones
+        run: python -m unittest test_actualizar_clima.py
 
       - name: Actualizar ERA5-Land y ECMWF IFS
         run: python actualizar_clima.py
