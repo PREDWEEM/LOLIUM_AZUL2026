@@ -31,8 +31,26 @@ LAT = -36.87
 LON = -59.89
 TIMEZONE = "America/Argentina/Buenos_Aires"
 ARCHIVO_CSV = Path("meteo_daily.csv")
-FECHA_INICIO = date(2026, 1, 1)
-FECHA_FIN = date(2026, 10, 1)  # Inclusive.
+
+
+def _campania_vigente() -> tuple[date, date]:
+    """Campaña meteorológica operativa: del 1 de enero al 1 de octubre del año en curso (hora de Argentina).
+
+    Del 2 de octubre al 31 de diciembre la campaña del año queda cerrada (la serie se conserva sin pronóstico) y el
+    1 de enero comienza automáticamente la carga de la campaña nueva. Las variables de entorno CAMPANIA_INICIO y
+    CAMPANIA_FIN (AAAA-MM-DD) permiten fijar otras fechas.
+    """
+    hoy = datetime.now(ZoneInfo(TIMEZONE)).date()
+    inicio = os.getenv("CAMPANIA_INICIO", "").strip()
+    fin = os.getenv("CAMPANIA_FIN", "").strip()
+    return (date.fromisoformat(inicio) if inicio else date(hoy.year, 1, 1),
+            date.fromisoformat(fin) if fin else date(hoy.year, 10, 1))
+
+
+FECHA_INICIO, FECHA_FIN = _campania_vigente()  # FECHA_FIN inclusive.
+# Días desde el comienzo de la campaña en que se admite no tener todavía reanálisis del año (ERA5 llega con
+# unos días de demora): mientras tanto ECMWF IFS histórico cubre desde el 1 de enero.
+DIAS_TOLERANCIA_INICIO = 21
 RETARDO_ERA5_OBJETIVO_DIAS = 5
 VENTANA_SONDEO_REANALISIS_DIAS = 21
 REFRESCO_ERA5_DIAS = 7
@@ -524,12 +542,25 @@ def actualizar_meteorologia() -> pd.DataFrame:
 
     fecha_objetivo_reanalisis = hoy - timedelta(days=RETARDO_ERA5_OBJETIVO_DIAS)
     fecha_objetivo_reanalisis = min(fecha_objetivo_reanalisis, FECHA_FIN)
+    sin_reanalisis = (FECHA_INICIO - timedelta(days=1), "era5", "ERA5", "REANALISIS_FALLBACK")
+    if fecha_objetivo_reanalisis < FECHA_INICIO:
+        # comienzo de campaña: todavía no corresponde reanálisis del año; ECMWF IFS cubre desde el 1 de enero
+        print("Comienzo de campaña: sin reanálisis del año todavía; ECMWF IFS cubre desde el 1 de enero.")
+        resultado_corte = sin_reanalisis
+    else:
+        try:
+            resultado_corte = _resolver_corte_reanalisis(fecha_objetivo_reanalisis)
+        except DatosMeteorologicosAusentes:
+            if (hoy - FECHA_INICIO).days > DIAS_TOLERANCIA_INICIO:
+                raise
+            print("Comienzo de campaña: el reanálisis aún no publicó días del año; ECMWF IFS cubre desde el 1 de enero.")
+            resultado_corte = sin_reanalisis
     (
         reanalisis_hasta,
         modelo_reanalisis,
         fuente_reanalisis,
         tipo_reanalisis,
-    ) = _resolver_corte_reanalisis(fecha_objetivo_reanalisis)
+    ) = resultado_corte
 
     ifs_desde = max(FECHA_INICIO, reanalisis_hasta + timedelta(days=1))
     ifs_hasta = min(hoy - timedelta(days=1), FECHA_FIN)

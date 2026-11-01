@@ -2,10 +2,21 @@
 """
 Punto de entrada de PREDWEEM Azul.
 
-La aplicación científica original se conserva en
-``app_emergenciacombinado_core.py``. Este archivo la ejecuta sin alterar su
-lógica y agrega, al final de la interfaz, una descarga Excel completa de los
-resultados generados.
+La aplicación científica original se conserva en ``app_emergenciacombinado_core.py``. Antes de ejecutarla:
+
+* ``parchear_visualizacion_intensidad_relativa`` incorpora al motor el decaimiento desde el 15 de abril
+  (y ajustes de formato de su gráfico);
+* se retiran de la página los elementos que reemplaza la alerta de flushes del final: mapa de riesgo,
+  gráfico de dinámica principal, mensajes de inicio y momento de control del motor, la leyenda de versión,
+  las pestañas (Monitor de decisión, Precipitaciones y suelo, Análisis estratégico y Bio-calibración), la
+  sección "Datos del lote" (se usa el clima del repositorio y la cobertura de rastrojo por defecto,
+  10 %), la imagen de fondo (reemplazada por un fondo liso claro) y, en la barra lateral, los parámetros del
+  motor (quedan en sus valores por defecto), sus avisos, el calibrador 2D y el botón del reporte del motor;
+  la barra lateral conserva los parámetros de la ventana de control.
+
+El motor sigue calculando como antes: su primer pico se usa como inicio estimado del reloj térmico hasta
+que se informa la fecha de las primeras plántulas. La alerta (``alerta_lolmu.py``) es la calibrada con
+17 campañas de Bordenave y validada con los conteos de Azul 2026.
 """
 from pathlib import Path
 
@@ -15,189 +26,182 @@ from visualizacion_intensidad_relativa import parchear_visualizacion_intensidad_
 _CORE_APP = Path(__file__).with_name("app_emergenciacombinado_core.py")
 _core_source = _CORE_APP.read_text(encoding="utf-8")
 _core_source = parchear_visualizacion_intensidad_relativa(_core_source)
+
+
+def _reemplazar(origen: str, viejo: str, nuevo: str) -> str:
+    if viejo not in origen:
+        raise RuntimeError(f"No se encontró el bloque a reemplazar en el motor: {viejo[:70]!r}")
+    return origen.replace(viejo, nuevo, 1)
+
+
+def _cortar(origen: str, desde: str, hasta: str, nuevo: str) -> str:
+    """Reemplaza el tramo [desde, hasta) del motor."""
+    ini = origen.find(desde)
+    fin = origen.find(hasta, ini) if ini >= 0 else -1
+    if ini < 0 or fin < ini:
+        raise RuntimeError(f"No se encontró el tramo a retirar del motor: {desde[:70]!r}")
+    return origen[:ini] + nuevo + origen[fin:]
+
+
+_FONDO_CSS = """<style>
+.stApp { background: #f4f6f3; }
+[data-testid="stAppViewContainer"] > .main, [data-testid="stMain"] { background: transparent; }
+[data-testid="stSidebar"] { background-color: #e8f3ea; border-right: 1px solid #cfe3d3; }
+[data-testid="stSidebar"] .stMarkdown, [data-testid="stSidebar"] p, [data-testid="stSidebar"] label { color: #14532d !important; }
+[data-testid="stCaptionContainer"], .stCaption { color: #4b5563 !important; }
+h1, h2, h3, h4 { color: #1f2937; }
+</style>"""
+
+# gráficos del motor que reemplaza la alerta (el cálculo no cambia)
+for _llamada in ("st.plotly_chart(go.Figure(data=go.Heatmap(", "st.plotly_chart(\n                fig_emer,"):
+    _core_source = _reemplazar(_core_source, _llamada, _llamada.replace("st.plotly_chart(", "_omitir_grafico("))
+
+# la regla "header {visibility: hidden;}" ocultaba también el encabezado de los calendarios desplegables
+_core_source = _reemplazar(_core_source, "    header {visibility: hidden;}", '    header[data-testid="stHeader"] {visibility: hidden;}')
+# fondo liso claro en lugar de la imagen de plantas (mejor contraste)
+_core_source = _reemplazar(_core_source, 'set_bg_hack("fondo_predweem_v3.png")', "st.markdown(_FONDO_CSS, unsafe_allow_html=True)")
+# leyenda de versión del motor
+_core_source = _reemplazar(
+    _core_source,
+    'st.caption("Azul · VISUAL V3 · ventana eficiente verde · exportación PNG de alta resolución")',
+    "pass",
+)
+
+# sección "Datos del lote": clima del repositorio, sin conteos del formato anterior, cobertura por defecto (10 %)
+_core_source = _cortar(
+    _core_source,
+    'with st.expander("📂 1. Datos del Lote", expanded=True):',
+    'df_meteo_raw = load_data(archivo_meteo, "meteo_daily")',
+    "archivo_meteo = None\narchivo_campo = None\ncobertura_pct = 10\nke_val, mod_termico = parametros_superficie(cobertura_pct)\n\n",
+)
+_core_source = _reemplazar(_core_source, 'df_campo_raw = load_data(archivo_campo, "azul_campo")', "df_campo_raw = None")
+
+# barra lateral: solo la ventana de control; los parámetros del motor quedan en sus valores por defecto
+_core_source = _cortar(
+    _core_source,
+    'st.sidebar.markdown("## ⚙️ 2. Fisiología y Logística")',
+    "# ---------------------------------------------------------\n# 6. MOTOR DE CÁLCULO",
+    '''st.sidebar.markdown("## ⚙️ Ventana de control")
+st.sidebar.caption("Tiempo térmico sobre la temperatura media del aire y objetivos de la ventana post-emergente.")
+col_t1, col_t2 = st.sidebar.columns(2)
+with col_t1: t_base_val = st.number_input("T Base", value=2.0, step=0.5)
+with col_t2: t_opt_max = st.number_input("T Óptima Max", value=20.0, step=1.0)
+t_critica = st.sidebar.slider("T Crítica (Stop)", 26.0, 42.0, 30.0)
+st.sidebar.markdown("**Objetivos (°Cd)**")
+dga_optimo = st.sidebar.number_input("TT Control Post-emergente (°Cd)", value=600, step=10)
+dga_critico = st.sidebar.number_input("Límite Ventana (°Cd)", value=800, step=10)
+
+# parámetros del motor PREDWEEM en sus valores por defecto (controles retirados de la página)
+umbral_er = 0.0001
+umbral_termoinhibicion = 24.0
+umbral_choque_hidrico = 45.0
+residualidad = 0
+w_max_val = 18.81
+exponente_kr = 0.0
+
+''',
+)
+
+# botón lateral del reporte del motor: la descarga final reúne los resultados de la alerta
+_core_source = _reemplazar(_core_source, 'st.sidebar.download_button("📥 Descargar Reporte Completo"', '_omitir_grafico("📥 Descargar Reporte Completo"')
+
+# mensajes de inicio de conteo térmico y momento crítico de control del motor
+_core_source = _cortar(_core_source, "            if fecha_inicio_ventana:\n                st.success(", "        col_gauge = col_gauge", "            pass\n\n")
+
+# pestañas del motor (Monitor de decisión, Precipitaciones y suelo, Análisis estratégico, Bio-calibración)
+_core_source = _cortar(_core_source, "    tab1, tab2, tab3, tab4 = st.tabs(", "    output = io.BytesIO()", "")
+
+
+def _omitir_grafico(*_args, **_kwargs):
+    """No dibuja el elemento (se conservan la figura y todos los cálculos del motor)."""
+    return None
+
+
 exec(
     compile(_core_source, str(_CORE_APP), "exec"),
     globals(),
 )
 
-# Panel exclusivamente visual: usa el horizonte ya presente en la serie.
 if "df" in globals() and isinstance(df, pd.DataFrame) and not df.empty:
     st.divider()
     mostrar_horizonte_pronostico(df, "Azul")
 
+NOTA_AZUL = (
+    "**Validación en Azul.** El modelo se calibró en Bordenave y se probó, sin reajustarlo, con los conteos de Azul 2026 "
+    "(11 fechas entre el 01/03 y el 01/09; 10 intervalos de 11 a 29 días; 4 con emergencia ≥ 5 % de la campaña por "
+    "semana, todos entre el 01/03 y el 20/05) y el clima de esta app. Emitida al comienzo de cada intervalo, la alerta "
+    "ordenó perfectamente los intervalos con y sin flush (AUC 1,00 en los tres niveles de información): los 4 quedaron "
+    "en *Alerta* y ninguno de los 6 sin flush. El gemelo digital de Azul no pudo dar porcentajes de emergencia durante "
+    "2026, porque su referencia es la propia campaña 2026 y recién está disponible al cerrarla.\n\n"
+    "**Límites en Azul.** Una sola campaña y conteos cada 2–4 semanas: con intervalos tan largos, un \"flush\" es en "
+    "realidad un período de emergencia sostenida, y el resultado es mucho menos exigente que una validación semanal. El "
+    "clima es reanálisis ERA5 en la grilla de Azul, no observaciones de estación. La alerta con conteos está calibrada con "
+    "conteos semanales; con recorridas espaciadas conviene usar sobre todo la fecha de primeras plántulas. La curva "
+    "acumulada es el calendario de Bordenave (error medio de 6 puntos en Azul 2026); con una segunda campaña de Azul se "
+    "podrá usar un calendario propio, como en Tres Arroyos."
+)
 
-def _fecha_excel(valor):
-    """Devuelve una fecha legible o una celda vacía."""
-    if valor is None or pd.isna(valor):
-        return ""
-    return pd.Timestamp(valor).strftime("%d/%m/%Y")
+# Alerta de flushes (independiente del motor científico; no modifica sus resultados)
+if "df_meteo_raw" in globals() and isinstance(df_meteo_raw, pd.DataFrame) and not df_meteo_raw.empty:
+    st.divider()
+    try:
+        from visualizacion_alerta_lolmu import mostrar_alerta_lolmu
+
+        _idx_pico = globals().get("idx_primer_pico")
+        _inicio_predicho = (
+            df.loc[_idx_pico, "Fecha"]
+            if _idx_pico is not None and "df" in globals() and isinstance(df, pd.DataFrame) and _idx_pico in df.index
+            else globals().get("fecha_inicio_ventana")
+        )
+        _resultados_alerta = mostrar_alerta_lolmu(
+            df_meteo_raw,
+            inicio_predicho=_inicio_predicho,
+            t_base=float(globals().get("t_base_val", 2.0)),
+            t_opt=float(globals().get("t_opt_max", 20.0)),
+            t_crit=float(globals().get("t_critica", 30.0)),
+            tt_control=float(globals().get("dga_optimo", 600.0)),
+            tt_limite=float(globals().get("dga_critico", 800.0)),
+            localidad="Azul",
+            nota_sitio=NOTA_AZUL,
+        )
+    except Exception as _error_alerta:  # noqa: BLE001
+        st.warning(f"No se pudo calcular la alerta: {_error_alerta}")
 
 
-# La descarga se muestra únicamente cuando el motor generó resultados.
-if "df" in globals() and isinstance(df, pd.DataFrame) and not df.empty:
-    reporte_excel = io.BytesIO()
+def _escribir_hoja(writer, dataframe, nombre):
+    """Escribe una hoja y aplica un formato básico de lectura."""
+    if not isinstance(dataframe, pd.DataFrame) or dataframe.empty:
+        return
+    dataframe.to_excel(writer, sheet_name=nombre, index=False)
+    hoja = writer.sheets[nombre]
+    ultima_columna = max(0, len(dataframe.columns) - 1)
+    hoja.freeze_panes(1, 0)
+    hoja.autofilter(0, 0, len(dataframe), ultima_columna)
+    hoja.set_column(0, ultima_columna, 18)
 
-    with pd.ExcelWriter(
-        reporte_excel,
-        engine="xlsxwriter",
-        datetime_format="dd/mm/yyyy",
-        date_format="dd/mm/yyyy",
-    ) as writer:
-        # 1. Serie diaria completa del modelo.
-        df.to_excel(writer, index=False, sheet_name="Resultados_Diarios")
 
-        # 2. Resultados de validación integrados por cada intervalo real.
-        if (
-            "df_sincronizado" in globals()
-            and isinstance(df_sincronizado, pd.DataFrame)
-            and not df_sincronizado.empty
-        ):
-            df_sincronizado.to_excel(
-                writer,
-                index=False,
-                sheet_name="Validacion_Intervalos",
-            )
-
-        # 3. Observaciones originales de campo.
-        if (
-            "df_campo" in globals()
-            and isinstance(df_campo, pd.DataFrame)
-            and not df_campo.empty
-        ):
-            df_campo.to_excel(
-                writer,
-                index=False,
-                sheet_name="Observaciones_Campo",
-            )
-
-        # 4. Resumen operativo para la toma de decisiones.
-        pd.DataFrame(
-            {
-                "Indicador": [
-                    "Localidad",
-                    "Fecha de generación",
-                    "Inicio del conteo térmico",
-                    "Fecha objetivo de control",
-                    "Fecha límite de la ventana",
-                    "TT acumulado actual (°Cd)",
-                    "TT pronosticado +7 días (°Cd)",
-                    "Estado operativo",
-                ],
-                "Valor": [
-                    "Azul (Buenos Aires)",
-                    pd.Timestamp.now().strftime("%d/%m/%Y %H:%M"),
-                    _fecha_excel(globals().get("fecha_inicio_ventana")),
-                    _fecha_excel(globals().get("fecha_control")),
-                    _fecha_excel(globals().get("fecha_limite")),
-                    globals().get("dga_hoy", 0.0),
-                    globals().get("dga_7dias", 0.0),
-                    globals().get("msg_estado", ""),
-                ],
-            }
-        ).to_excel(writer, index=False, sheet_name="Resumen_Decision")
-
-        # 5. Métricas de validación campo-modelo.
-        pd.DataFrame(
-            {
-                "Metrica": [
-                    "PEC (%)",
-                    "Lag control (días)",
-                    "Lead time (días)",
-                    "Pearson de flujos",
-                    "NSE de flujos",
-                    "KGE de flujos",
-                    "RMSE acumulado",
-                    "R2 acumulado",
-                    "CCC acumulado",
-                    "Desfase T50 (días)",
-                    "F1-Score de coincidencia",
-                    "Exactitud global",
-                    "Hits",
-                    "Misses",
-                    "Falsos positivos",
-                    "Correctos negativos",
-                    "Desfase del primer flujo (días)",
-                ],
-                "Valor": [
-                    globals().get("pec", 0.0),
-                    globals().get("peak_lag", 0),
-                    globals().get("lead_time", 0),
-                    globals().get("pearson_r", 0.0),
-                    globals().get("nse_flujos", 0.0),
-                    globals().get("kge_flujos", 0.0),
-                    globals().get("rmse_acum", 0.0),
-                    globals().get("r2_acum", 0.0),
-                    globals().get("ccc_acum", 0.0),
-                    globals().get("desfase_t50", 0),
-                    globals().get("f1_score_coincidencia", 0.0),
-                    globals().get("exactitud_global", 0.0),
-                    globals().get("hits_val", 0),
-                    globals().get("misses_val", 0),
-                    globals().get("falsos_pos_val", 0),
-                    globals().get("correctos_neg_val", 0),
-                    globals().get("lag_inicio_dias", "N/A"),
-                ],
-            }
-        ).to_excel(writer, index=False, sheet_name="Metricas_Validacion")
-
-        # 6. Parámetros empleados en la corrida.
-        pd.DataFrame(
-            {
-                "Parametro": [
-                    "T base (°C)",
-                    "T óptima (°C)",
-                    "T crítica (°C)",
-                    "Capacidad superficial W Max (mm)",
-                    "Coeficiente Ke",
-                    "Exponente Kr",
-                    "Modulador térmico",
-                    "Umbral de termoinhibición (°C)",
-                    "Choque hídrico 3 días (mm)",
-                    "Umbral del primer pico",
-                    "Cobertura de rastrojo (%)",
-                    "TT objetivo de control (°Cd)",
-                    "TT límite de ventana (°Cd)",
-                ],
-                "Valor": [
-                    globals().get("t_base_val", ""),
-                    globals().get("t_opt_max", ""),
-                    globals().get("t_critica", ""),
-                    globals().get("w_max_val", ""),
-                    globals().get("ke_val", ""),
-                    globals().get("exponente_kr", ""),
-                    globals().get("mod_termico", ""),
-                    globals().get("umbral_termoinhibicion", ""),
-                    globals().get("umbral_choque_hidrico", ""),
-                    globals().get("UMBRAL_PRIMER_PICO", ""),
-                    globals().get("cobertura_pct", ""),
-                    globals().get("dga_optimo", ""),
-                    globals().get("dga_critico", ""),
-                ],
-            }
-        ).to_excel(writer, index=False, sheet_name="Parametros_Modelo")
-
-        # Ajuste simple de anchos para facilitar la lectura inmediata.
-        for nombre_hoja, hoja in writer.sheets.items():
-            hoja.freeze_panes(1, 0)
-            hoja.autofilter(0, 0, 0, max(0, hoja.dim_colmax))
-            hoja.set_column(0, max(0, hoja.dim_colmax), 18)
-
-    reporte_excel.seek(0)
+# Descarga final: los resultados que muestra la app (alerta, emergencia acumulada y ventana de control)
+_resultados_alerta = globals().get("_resultados_alerta")
+if isinstance(_resultados_alerta, dict) and _resultados_alerta:
+    reporte_excel_final = io.BytesIO()
+    with pd.ExcelWriter(reporte_excel_final, engine="xlsxwriter", datetime_format="dd/mm/yyyy", date_format="dd/mm/yyyy") as writer:
+        for _hoja, _tabla in _resultados_alerta.items():
+            _escribir_hoja(writer, _tabla, _hoja)
+    reporte_excel_final.seek(0)
+    _emision = _resultados_alerta["Resumen"].set_index("Indicador")["Valor"].get("Fecha de emisión", "")
 
     st.divider()
     st.subheader("📥 Descarga de resultados")
     st.caption(
-        "El archivo incluye resultados diarios, validación por intervalos, "
-        "observaciones de campo, métricas, resumen operativo y parámetros."
+        "Excel con los resultados que muestra la app para la fecha de emisión elegida: resumen (nivel y probabilidad de "
+        "flush, inicio y ventana de control 600–800 °Cd, emergencia acumulada esperada), alerta semanal, emergencia "
+        "acumulada con su rango, tiempo térmico diario desde el inicio, conteos usados, clima, parámetros y validación."
     )
     st.download_button(
-        label="📊 Descargar resultados completos en Excel",
-        data=reporte_excel.getvalue(),
-        file_name="PREDWEEM_Azul_Resultados_Completos.xlsx",
-        mime=(
-            "application/vnd.openxmlformats-officedocument."
-            "spreadsheetml.sheet"
-        ),
+        label="📊 Descargar resultados en Excel",
+        data=reporte_excel_final.getvalue(),
+        file_name=f"PREDWEEM_Lolium_Azul_alerta_{str(_emision).replace('/', '-') or 'resultados'}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         width="stretch",
-        key="descarga_excel_resultados_final",
+        key="descarga_excel_resultados_final_azul",
     )
