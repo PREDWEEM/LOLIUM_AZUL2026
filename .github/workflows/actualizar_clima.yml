@@ -69,7 +69,7 @@ jobs:
           if df['Fecha'].isna().any():
               raise SystemExit('Hay fechas inválidas.')
           if (df['Fecha'].dt.date > FECHA_FIN).any():
-              raise SystemExit('Hay fechas posteriores al 1 de octubre de 2026.')
+              raise SystemExit(f'Hay fechas posteriores al cierre de campaña ({FECHA_FIN}).')
           if df['Fecha'].duplicated().any():
               raise SystemExit('Hay fechas duplicadas.')
           if df[['TMAX', 'TMIN', 'Prec']].isna().any().any():

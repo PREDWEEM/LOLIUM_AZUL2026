@@ -19,6 +19,13 @@ def bloque(inicio, fin, tipo="REANALISIS_FALLBACK"):
 
 
 class RecuperacionMeteorologica(unittest.TestCase):
+    # las pruebas usan la campaña 2026 sin importar el año en que se ejecutan
+    def setUp(self):
+        for nombre, valor in (("FECHA_INICIO", date(2026, 1, 1)), ("FECHA_FIN", date(2026, 10, 1))):
+            parche = patch.object(clima, nombre, valor)
+            parche.start()
+            self.addCleanup(parche.stop)
+
     def test_recupera_desde_primer_dia_pendiente(self):
         viejo = bloque("2026-01-01", "2026-08-11")
         self.assertEqual(clima._inicio_recuperacion(viejo, date(2026, 9, 5)), date(2026, 8, 12))
@@ -84,6 +91,36 @@ class RecuperacionMeteorologica(unittest.TestCase):
                     self.assertEqual(consultas[0]["forecast_days"], min(8, (clima.FECHA_FIN-hoy).days+1))
                 else:
                     self.assertFalse(salida.TIPO.eq("PRONOSTICO").any())
+
+
+    def test_reinicio_campania_nueva(self):
+        """El 1 de enero comienza la campaña nueva: solo pronóstico, luego ECMWF IFS hasta que llega el reanálisis."""
+        from datetime import timedelta
+        for hoy, corte_disponible in [(date(2027, 1, 1), None), (date(2027, 1, 5), None), (date(2027, 1, 12), date(2027, 1, 6)), (date(2027, 1, 20), "falla")]:
+            with self.subTest(hoy=hoy), tempfile.TemporaryDirectory() as tmp:
+                destino = Path(tmp) / "meteo_daily.csv"
+                bloque("2026-01-01", "2026-10-01").to_csv(destino, index=False)   # serie cerrada de la campaña anterior
+                def corte(objetivo):
+                    if corte_disponible == "falla" or corte_disponible is None:
+                        raise clima.DatosMeteorologicosAusentes("sin días completos")
+                    return corte_disponible, "era5", "ERA5", "REANALISIS_FALLBACK"
+                def historico(inicio, fin, **kw):
+                    self.assertGreaterEqual(inicio, date(2027, 1, 1))
+                    return bloque(inicio, fin, kw["tipo"]) if inicio <= fin else bloque(inicio, inicio - timedelta(days=1))
+                with patch.object(clima, "FECHA_INICIO", date(2027, 1, 1)), patch.object(clima, "FECHA_FIN", date(2027, 10, 1)), \
+                        patch.object(clima, "ARCHIVO_CSV", destino), patch.object(clima, "_ahora_local", return_value=datetime.combine(hoy, datetime.min.time())), \
+                        patch.object(clima, "_resolver_corte_reanalisis", side_effect=corte), patch.object(clima, "_descargar_historico_modelo", side_effect=historico), \
+                        patch.object(clima, "_descargar_pronostico", return_value=bloque(hoy, hoy + timedelta(days=7), "PRONOSTICO")), contextlib.redirect_stdout(io.StringIO()):
+                    salida = clima.actualizar_meteorologia()
+                self.assertEqual(salida.Fecha.min(), "2027-01-01")
+                self.assertEqual(salida.Fecha.max(), (hoy + timedelta(days=7)).isoformat())
+                self.assertEqual(len(salida), (hoy + timedelta(days=7) - date(2027, 1, 1)).days + 1)
+        # pasadas las tres semanas, la falta de reanálisis vuelve a ser un error
+        with tempfile.TemporaryDirectory() as tmp, patch.object(clima, "FECHA_INICIO", date(2027, 1, 1)), patch.object(clima, "FECHA_FIN", date(2027, 10, 1)), \
+                patch.object(clima, "ARCHIVO_CSV", Path(tmp) / "m.csv"), patch.object(clima, "_ahora_local", return_value=datetime(2027, 2, 15)), \
+                patch.object(clima, "_resolver_corte_reanalisis", side_effect=clima.DatosMeteorologicosAusentes("sin días")), contextlib.redirect_stdout(io.StringIO()):
+            with self.assertRaises(clima.DatosMeteorologicosAusentes):
+                clima.actualizar_meteorologia()
 
 
 if __name__ == "__main__":
