@@ -130,10 +130,10 @@ NOTA_AZUL = (
     "**Validación en Azul.** El modelo se calibró en Bordenave y se probó, sin reajustarlo, con los conteos de Azul 2026 "
     "(11 fechas entre el 01/03 y el 01/09; 10 intervalos de 11 a 29 días; 4 con emergencia ≥ 5 % de la campaña por "
     "semana, todos entre el 01/03 y el 20/05) y el clima de esta app. Emitida al comienzo de cada intervalo, la alerta "
-    "ordenó perfectamente los intervalos con y sin flush (AUC 1,00 en los tres niveles de información): los 4 quedaron "
-    "en *Alerta* y ninguno de los 6 sin flush. El gemelo digital de Azul no pudo dar porcentajes de emergencia durante "
+    "ordenó perfectamente los intervalos con y sin gran flujo (AUC 1,00 en los tres niveles de información): los 4 quedaron "
+    "en *Alerta* y ninguno de los 6 sin gran flujo. El gemelo digital de Azul no pudo dar porcentajes de emergencia durante "
     "2026, porque su referencia es la propia campaña 2026 y recién está disponible al cerrarla.\n\n"
-    "**Límites en Azul.** Una sola campaña y conteos cada 2–4 semanas: con intervalos tan largos, un \"flush\" es en "
+    "**Límites en Azul.** Una sola campaña y conteos cada 2–4 semanas: con intervalos tan largos, un \"gran flujo\" es en "
     "realidad un período de emergencia sostenida, y el resultado es mucho menos exigente que una validación semanal. El "
     "clima es reanálisis ERA5 en la grilla de Azul, no observaciones de estación. La alerta con conteos está calibrada con "
     "conteos semanales; con recorridas espaciadas conviene usar sobre todo la fecha de primeras plántulas. La curva "
@@ -205,7 +205,7 @@ if isinstance(_resultados_alerta, dict) and _resultados_alerta:
     st.subheader("📥 Descarga de resultados")
     st.caption(
         "Excel con los resultados que muestra la app para la fecha de emisión elegida: resumen (nivel y probabilidad de "
-        "flush, inicio y ventana de control 600–800 °Cd, emergencia acumulada esperada), alerta semanal, emergencia "
+        "gran flujo, inicio y ventana de control 600–800 °Cd, emergencia acumulada esperada), alerta semanal, emergencia "
         "acumulada con su rango, tiempo térmico diario desde el inicio, conteos usados, clima, parámetros y validación."
     )
     st.download_button(
