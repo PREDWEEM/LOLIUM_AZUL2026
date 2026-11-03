@@ -71,13 +71,13 @@ La aplicación utiliza los recursos meteorológicos y científicos incluidos en 
 
 La actualización meteorológica programada puede continuar funcionando en un repositorio privado mediante GitHub Actions, siempre que Actions permanezca habilitado y el workflow conserve los permisos necesarios para actualizar `meteo_daily.csv`.
 
-## Aviso de emergencia tardía (ventana de siembra)
+## Aviso de flujos tardíos (ventana de siembra)
 
-Del 1 de mayo al 1 de julio la app muestra además la **probabilidad de emergencia tardía**: que en los próximos 7 días
-emerja al menos 2 % de la campaña, con aviso desde 20 %. En esa época los flushes de ≥ 5 % son raros, pero pocas plantas
+Del 1 de mayo al 1 de julio la app muestra además la **probabilidad de flujos tardíos**: que en los próximos 7 días
+emerja al menos 2 % de la campaña, con aviso desde 20 %. En esa época los grandes flujos (≥ 5 %) son raros, pero pocas plantas
 por semana importan para decidir la fecha de siembra. Es la misma alerta recalibrada por nivel de información (`tardia`
-en `alerta_lolmu_params.json`). Aparece en un recuadro debajo de la alerta, en la fila «Siembra» del **semáforo
-semanal** del gráfico (violeta fuerte = emergencia tardía probable; la fila «Flush» repite el nivel de cada semana) y en
+en `alerta_lolmu_params.json`). Aparece en un recuadro debajo de la alerta, en el **semáforo
+semanal** del gráfico (fila «Flujos tardíos»: violeta fuerte = flujo tardío probable; la fila «Grandes flujos» repite el nivel de cada semana) y en
 la descarga en Excel.
 
 | Información | AUC Bordenave (17 campañas, 132 semanas, 42 con ≥ 2 %) | Detectadas con el aviso | Semanas marcadas |
