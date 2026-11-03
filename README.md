@@ -71,6 +71,12 @@ La aplicación utiliza los recursos meteorológicos y científicos incluidos en 
 
 La actualización meteorológica programada puede continuar funcionando en un repositorio privado mediante GitHub Actions, siempre que Actions permanezca habilitado y el workflow conserve los permisos necesarios para actualizar `meteo_daily.csv`.
 
+**Inicio de la curva.** Cuando se informa la fecha de las primeras plántulas (o hay un primer conteo con plántulas), la curva
+del calendario vale 0 antes de esa fecha, arranca ese día en la fracción típica ya emergida al ver las primeras plantas
+(~18 %) y desde ahí sigue el calendario reescalado. En Azul 2026 el error medio de la curva desde las primeras plántulas
+fue 11,0 puntos, contra 5,3 con el calendario por fecha (una sola campaña): se prefirió que la curva no suba antes del inicio
+informado.
+
 ## Aviso de flujos tardíos (ventana de siembra)
 
 Del 1 de mayo al 1 de julio la app muestra además la **probabilidad de flujos tardíos**: que en los próximos 7 días
