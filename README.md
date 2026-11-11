@@ -44,8 +44,8 @@ La página muestra la **alerta de flushes** de *Lolium multiflorum*: la probabil
 ventana de control post-emergente (600–800 °Cd desde el inicio). El modelo (`alerta_lolmu.py`, `alerta_lolmu_params.json`,
 `visualizacion_alerta_lolmu.py`) es el calibrado con 17 campañas de Bordenave y combina, con la información disponible a la
 fecha de emisión: el calendario medio de emergencia de LOLMU; la respuesta a las lluvias ya registradas; opcionalmente, la
-fecha en que se vieron las primeras plántulas del lote (que además ancla el reloj térmico; sin ese dato se usa el primer pico
-del motor PREDWEEM); y, opcionalmente, conteos de plántulas (tabla o planilla Excel/CSV).
+fecha en que se vieron las primeras plántulas del lote (que además ancla el reloj térmico; sin ese dato la ventana de
+control no se calcula); y, opcionalmente, conteos de plántulas (tabla o planilla Excel/CSV).
 
 **Validación en Azul.** Sin reajustar el modelo, con los conteos de Azul 2026 (`data/campanias/2026/`; 10 intervalos de 11 a
 29 días entre el 01/03 y el 01/09, 4 con flush) y el clima de este repositorio: AUC 1,00 en los tres niveles de información;
