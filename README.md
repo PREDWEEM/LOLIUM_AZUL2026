@@ -178,3 +178,12 @@ recorta al alcanzar ese límite y desde el 2 de octubre no se consulta el pronó
 ERA5 y ECMWF IFS quedan limitadas al 1 de octubre, permitiendo actualizar el reanálisis de los días pendientes sin ampliar la
 campaña. La serie cerrada debe ser continua y no admite fechas posteriores al límite. El 1 de enero siguiente comienza la
 campaña nueva.
+
+## Módulo común (LOLIUM-COMUN)
+
+La alerta, su visualización y el control de acceso son comunes a las 8 apps de Lolium y están en el paquete
+[PREDWEEM/LOLIUM-COMUN](https://github.com/PREDWEEM/LOLIUM-COMUN), fijado por versión en `requirements.txt`
+(`lolium-comun @ git+https://github.com/PREDWEEM/LOLIUM-COMUN@<commit>  # v1.0.0`). En esta app, `alerta_lolmu.py`,
+`visualizacion_alerta_lolmu.py` y `acceso_predweem.py` son archivos puente que cargan ese paquete con los parámetros de este
+sitio (`alerta_lolmu_params.json`), que siguen acá. Los cambios a la alerta se hacen en LOLIUM-COMUN y llegan a la app al
+actualizar la versión en `requirements.txt`.
