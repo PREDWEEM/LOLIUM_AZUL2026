@@ -15,8 +15,8 @@ La aplicación científica original se conserva en ``app_emergenciacombinado_cor
   la barra lateral conserva los parámetros de la ventana de control.
 
 El motor sigue calculando como antes: su primer pico se usa como inicio estimado del reloj térmico hasta
-que se informa la fecha de las primeras plántulas. La alerta (``alerta_lolmu.py``) es la calibrada con
-17 campañas de Bordenave y validada con los conteos de Azul 2026.
+que se informa la fecha de las primeras plántulas. La alerta (``alerta_lolmu.py``) es la del paquete lolium-comun,
+validada con los conteos de Azul 2026.
 """
 from pathlib import Path
 
@@ -133,7 +133,7 @@ if "df" in globals() and isinstance(df, pd.DataFrame) and not df.empty:
     mostrar_horizonte_pronostico(df, "Azul")
 
 NOTA_AZUL = (
-    "**Validación en Azul.** El modelo se calibró en Bordenave y se probó, sin reajustarlo, con los conteos de Azul 2026 "
+    "**Validación en Azul.** El modelo se probó, sin reajustarlo, con los conteos de Azul 2026 "
     "(11 fechas entre el 01/03 y el 01/09; 10 intervalos de 11 a 29 días; 4 con emergencia ≥ 5 % de la campaña por "
     "semana, todos entre el 01/03 y el 20/05) y el clima de esta app. Emitida al comienzo de cada intervalo, la alerta "
     "ordenó perfectamente los intervalos con y sin gran flujo (AUC 1,00 en los tres niveles de información): los 4 quedaron "
@@ -143,7 +143,7 @@ NOTA_AZUL = (
     "realidad un período de emergencia sostenida, y el resultado es mucho menos exigente que una validación semanal. El "
     "clima es reanálisis ERA5 en la grilla de Azul, no observaciones de estación. La alerta con conteos está calibrada con "
     "conteos semanales; con recorridas espaciadas conviene usar sobre todo la fecha de primeras plántulas. La curva "
-    "acumulada es el calendario de Bordenave (error medio de 6 puntos en Azul 2026); con una segunda campaña de Azul se "
+    "acumulada es el calendario de referencia regional (error medio de 6 puntos en Azul 2026); con una segunda campaña de Azul se "
     "podrá usar un calendario propio, como en Tres Arroyos."
 )
 
