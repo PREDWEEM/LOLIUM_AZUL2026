@@ -130,6 +130,9 @@ la ventana (mediana de las campañas, en plantas/m² y en % de la campaña) y re
 tienen la curva relativa usan la densidad de referencia del sitio (8224 pl/m² por campaña, mediana de las
 campañas con conteos, aplicada a la distribución regional):
 
+El riesgo para el residual se muestra recién cuando el usuario carga la fecha de siembra prevista (recuadro, fila
+«Residual» del semáforo y Excel); sin esa fecha, la app solo invita a cargarla.
+
 | Siembra | Nacimientos de −10 a +45 días (mediana) | Riesgo para el residual | Campañas del sitio |
 |---|---|---|---|
 | 1/05 | 1294 pl/m² (15,7 %) | Muy alto | 2026: 2528 pl/m² |
@@ -194,7 +197,7 @@ campaña nueva.
 
 La alerta, su visualización y el control de acceso son comunes a las 8 apps de Lolium y están en el paquete
 [PREDWEEM/LOLIUM-COMUN](https://github.com/PREDWEEM/LOLIUM-COMUN), fijado por versión en `requirements.txt`
-(`lolium-comun @ git+https://github.com/PREDWEEM/LOLIUM-COMUN@<commit>  # v1.8.0`). En esta app, `alerta_lolmu.py`,
+(`lolium-comun @ git+https://github.com/PREDWEEM/LOLIUM-COMUN@<commit>  # v1.9.0`). En esta app, `alerta_lolmu.py`,
 `visualizacion_alerta_lolmu.py` y `acceso_predweem.py` son archivos puente que cargan ese paquete con los parámetros de este
 sitio (`alerta_lolmu_params.json`), que siguen acá. Los cambios a la alerta se hacen en LOLIUM-COMUN y llegan a la app al
 actualizar la versión en `requirements.txt`.
